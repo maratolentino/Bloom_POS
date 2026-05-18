@@ -2472,6 +2472,48 @@ function factorial(int $n): int
         document.getElementById('pay_overlay').classList.remove('open');
       }
 
+      function printReceiptAuto() {
+        const receiptEl = document.querySelector('#pay_overlay .receipt');
+        if (!receiptEl) return;
+
+        const footerHtml = `
+          <hr style="border:none;border-top:1px solid #ddd;margin:10px 0;" />
+          <div style="text-align:center; font-size:11px; color:#555; line-height:1.5;">Thank you for shopping at ${STORE_INFO.name}</div>
+          <div style="text-align:center; font-size:11px; color:#555;">Please keep this receipt for returns and warranty claims.</div>
+        `;
+
+        const css = `
+          body{font-family:'Courier New', monospace; padding:16px; color:#231f20; background:#fff; display:flex; justify-content:center; align-items:flex-start; min-height:100vh;}
+          .receipt{max-width:360px;width:100%; margin:0 auto;}
+          .receipt-title{font-weight:800;text-align:center;font-size:16px;margin-bottom:10px;}
+          .receipt-row{display:flex;justify-content:space-between;margin:6px 0;font-size:13px;}
+          .receipt-row span{display:inline-block;}
+          .receipt-sep{border:none;border-top:1px solid #ddd;margin:10px 0;}
+          @media print { body{margin:0; padding:0; display:block;} .receipt{margin:0 auto;} }
+        `;
+
+        const w = window.open('', '_blank', 'width=600,height=800');
+        if (!w) return;
+
+        w.document.write(`<!doctype html><html><head><title>Receipt</title><style>${css}</style></head><body>` + receiptEl.outerHTML + footerHtml + `</body></html>`);
+        w.document.close();
+        w.focus();
+        w.onafterprint = function() { w.close(); };
+        try {
+          w.print();
+        } catch (err) {
+          console.error('Auto print error', err);
+        }
+      }
+
+      const saleForm = document.getElementById('sale_form');
+      if (saleForm) {
+        saleForm.addEventListener('submit', function () {
+          updateReceipt();
+          printReceiptAuto();
+        });
+      }
+
       function updateReceipt() {
         document.getElementById('r_items').innerHTML = cart.map(i => `<div class="receipt-row"><span>${i.qty}&times; ${i.name}</span><span>&#8369;${(i.price*i.qty).toFixed(2)}</span></div>`).join('');
         calcTotals();
