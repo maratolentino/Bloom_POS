@@ -212,7 +212,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
   $saleCalc      = calcSaleTotal($cart_subtotal, $discount_amount);
 
   $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,'Completed',?,?)");
-  $stmt->bind_param("ssddddssi", $transaction_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $employee_id, $customer_id);
+  $stmt->bind_param("ssdddsdsi", $transaction_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $employee_id, $customer_id);
   if ($stmt->execute()) {
     foreach ($cart_data as $item) {
       $sku   = $conn->real_escape_string($item["sku"]);
@@ -2318,6 +2318,7 @@ function factorial(int $n): int
     <script>
       const TAX_RATE = 0.12;
       let cart = [];
+      const STORE_INFO = <?= json_encode($store_info, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>;
       const allProducts = <?= json_encode($inventory) ?>;
 
       function addToCart(p) {
@@ -2552,6 +2553,43 @@ function factorial(int $n): int
         clearTimeout(t._t);
         t._t = setTimeout(() => t.style.opacity = '0', 2200);
       }
+      // Print receipt preview when Pay modal is open and user presses Ctrl+P
+      document.addEventListener('keydown', function(e) {
+        try {
+          if (e.ctrlKey && (e.key === 'p' || e.key === 'P')) {
+            const overlay = document.getElementById('pay_overlay');
+            if (overlay && overlay.classList.contains('open')) {
+              e.preventDefault();
+              const receiptEl = overlay.querySelector('.receipt');
+              if (!receiptEl) return;
+
+              const footerHtml = `
+                <hr style="border:none;border-top:1px solid #ddd;margin:10px 0;" />
+                <div style="text-align:center; font-size:11px; color:#555; line-height:1.5;">Thank you for shopping at ${STORE_INFO.name}</div>
+                <div style="text-align:center; font-size:11px; color:#555;">Please keep this receipt for returns and warranty claims.</div>
+              `;
+
+              const css = `
+                body{font-family:'Courier New', monospace; padding:16px; color:#231f20; background:#fff; display:flex; justify-content:center; align-items:flex-start; min-height:100vh;}
+                .receipt{max-width:360px;width:100%; margin:0 auto;}
+                .receipt-title{font-weight:800;text-align:center;font-size:16px;margin-bottom:10px;}
+                .receipt-row{display:flex;justify-content:space-between;margin:6px 0;font-size:13px;}
+                .receipt-row span{display:inline-block;}
+                .receipt-sep{border:none;border-top:1px solid #ddd;margin:10px 0;}
+                @media print { body{margin:0; padding:0; display:block;} .receipt{margin:0 auto;} }
+              `;
+
+              const w = window.open('', '_blank', 'width=600,height=800');
+              w.document.write(`<!doctype html><html><head><title>Receipt</title><style>${css}</style></head><body>` + receiptEl.outerHTML + footerHtml + `</body></html>`);
+              w.document.close();
+              w.focus();
+              w.onafterprint = function() { w.close(); };
+              setTimeout(function() { w.print(); }, 250);
+              setTimeout(function() { if (!w.closed) w.close(); }, 8000);
+            }
+          }
+        } catch (err) { console.error('Print preview error', err); }
+      });
     </script>
 
   <?php else:
