@@ -1614,10 +1614,10 @@ function factorial(int $n): int
     }
 
     .co-actions {
-      padding: 16px 22px 22px;
+      padding: 25px 24px 24px; /* Increases spacing around the borders */
       display: flex;
       flex-direction: column;
-      gap: 9px;
+      gap: 20px;               /* Adds more breathing space between each button */
     }
 
     /* ── Receipt ── */
