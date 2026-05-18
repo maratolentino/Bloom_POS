@@ -51,6 +51,12 @@ if ($conn->connect_error) {
   exit;
 }
 
+// Ensure `member_since` column exists on `customers` to support Member Since
+$colCheck = $conn->query("SHOW COLUMNS FROM customers LIKE 'member_since'");
+if ($colCheck && $colCheck->num_rows === 0) {
+  $conn->query("ALTER TABLE customers ADD COLUMN member_since DATETIME NULL DEFAULT NULL");
+}
+
 if (!isLoggedIn() && $page !== "login" && $page !== "register") {
   header("Location: ?page=login");
   exit;
@@ -366,7 +372,10 @@ if ($page === "crm") {
       $photo_path = $conn->real_escape_string($dir . time() . "_" . basename($_FILES["cust_photo"]["name"]));
       move_uploaded_file($_FILES["cust_photo"]["tmp_name"], $photo_path);
     }
-    $conn->query("INSERT INTO customers (full_name,contact_info,photo_url) VALUES ('$n','$c','$photo_path')");
+    // Member Since handling: accept an optional date input and store into member_since
+    $member_since = isset($_POST['member_since']) && $_POST['member_since'] !== '' ? $conn->real_escape_string($_POST['member_since']) : null;
+    $member_since_sql = $member_since ? "'" . $member_since . "'" : "NULL";
+    $conn->query("INSERT INTO customers (full_name,contact_info,photo_url,member_since) VALUES ('$n','$c','$photo_path', $member_since_sql)");
     header("Location: ?page=crm");
     exit;
   }
@@ -397,7 +406,13 @@ if ($page === "crm") {
       move_uploaded_file($_FILES["cust_photo"]["tmp_name"], $photo_path);
       $photo_sql = ", photo_url='$photo_path'";
     }
-    $conn->query("UPDATE customers SET full_name='$n',contact_info='$c'$photo_sql WHERE customer_id=$id");
+    // Allow updating Member Since (`member_since`) if provided
+    $created_sql = "";
+    if (isset($_POST['member_since']) && $_POST['member_since'] !== '') {
+      $ms = $conn->real_escape_string($_POST['member_since']);
+      $created_sql = ", member_since='$ms'";
+    }
+    $conn->query("UPDATE customers SET full_name='$n',contact_info='$c'$photo_sql$created_sql WHERE customer_id=$id");
     header("Location: ?page=crm");
     exit;
   }
@@ -2579,7 +2594,6 @@ function factorial(int $n): int
                 <div class="page-title">Dashboard</div>
                 <div class="page-sub"><?php echo date('l, d F Y'); ?> &middot; <?php echo $_SESSION['user_role']; ?> view</div>
               </div>
-              <a href="?page=checkout" class="btn btn-primary">+ New Sale</a>
             </div>
 
             <div class="stat-grid">
@@ -2615,18 +2629,6 @@ function factorial(int $n): int
                 <div class="stat-label">Customers</div>
                 <div class="stat-value"><?php echo $total_customers; ?></div>
                 <div class="stat-hint">Registered in CRM</div>
-              </div>
-            </div>
-
-            <div class="card" style="margin-bottom:20px;">
-              <div style="font-size:11px; font-weight:700; color:var(--text-3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:14px;">Quick Actions</div>
-              <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <a href="?page=checkout" class="btn btn-primary">Start Sale</a>
-                <?php if ($is_admin): ?>
-                  <a href="?page=inventory&tab=items" class="btn btn-secondary">View Inventory</a>
-                  <a href="?page=reports" class="btn btn-secondary">Reports</a>
-                  <a href="?page=register" class="btn btn-secondary">Add Employee</a>
-                <?php endif; ?>
               </div>
             </div>
 
@@ -2747,7 +2749,6 @@ function factorial(int $n): int
                       <div style="display:flex; gap:8px;">
                         <button onclick='openEditCatModal(<?= $cid ?>, <?= json_encode($cat["category_name"]) ?>)' class="btn btn-sm btn-secondary">Edit</button>
                         <button onclick="document.getElementById('assign_cat_id').value=<?= $cid ?>; document.getElementById('assignModal').classList.add('open');" class="btn btn-sm btn-secondary">Assign Items</button>
-                        <button onclick="openAddModal(); document.getElementById('form_cat').value=<?= $cid ?>;" class="btn btn-sm btn-primary">+ Product</button>
                       </div>
                     </div>
                     <?php if (!empty($citemsRows)): ?>
@@ -3154,7 +3155,7 @@ function factorial(int $n): int
 
                           <td style="color:var(--text-2);"><?= htmlspecialchars($c['contact_info'] ?? '&#8212;', ENT_QUOTES, 'UTF-8') ?></td>
                           <td><span class="badge badge-brown"><?= number_format($c['loyalty_points']) ?> pts</span></td>
-                          <td style="color:var(--text-3); font-size:12px;"><?= !empty($c['created_at']) ? date('d M Y', strtotime($c['created_at'])) : '&#8212;' ?></td>
+                          <td style="color:var(--text-3); font-size:12px;"><?= !empty($c['member_since']) ? date('d M Y', strtotime($c['member_since'])) : '&#8212;' ?></td>
                           <td>
                             <div style="display:flex; gap:6px;">
                               <button onclick='openEditCust(<?= json_encode($c) ?>)' class="btn btn-sm btn-secondary">Edit</button>
@@ -3182,6 +3183,7 @@ function factorial(int $n): int
               <form method="POST" action="?page=crm" enctype="multipart/form-data">
                 <div class="form-group"><label>Full Name</label><input type="text" name="full_name" required></div>
                 <div class="form-group"><label>Email / Contact</label><input type="text" name="contact_info" placeholder="email@example.com or 09XX-XXX-XXXX"></div>
+                <div class="form-group"><label>Member Since</label><input type="date" name="member_since" value="<?= htmlspecialchars($date_today, ENT_QUOTES, 'UTF-8') ?>"></div>
                 <div class="form-group"><label>Profile Photo</label><input type="file" name="cust_photo" accept="image/*" style="padding:6px;"></div>
                 <button type="submit" name="add_customer" class="btn btn-primary btn-full">Save Customer</button>
               </form>
@@ -3198,6 +3200,7 @@ function factorial(int $n): int
                 <input type="hidden" name="customer_id" id="edit_cust_id">
                 <div class="form-group"><label>Full Name</label><input type="text" name="full_name" id="edit_cust_name" required></div>
                 <div class="form-group"><label>Email / Contact</label><input type="text" name="contact_info" id="edit_cust_contact"></div>
+                <div class="form-group"><label>Member Since</label><input type="date" name="member_since" id="edit_cust_member_since"></div>
                 <div class="form-group"><label>Profile Photo</label><input type="file" name="cust_photo" accept="image/*" style="padding:6px;"></div>
                 <button type="submit" name="update_customer" class="btn btn-primary btn-full">Update Customer</button>
               </form>
@@ -3208,6 +3211,9 @@ function factorial(int $n): int
               document.getElementById('edit_cust_id').value = c.customer_id;
               document.getElementById('edit_cust_name').value = c.full_name;
               document.getElementById('edit_cust_contact').value = c.contact_info || '';
+              try {
+                document.getElementById('edit_cust_member_since').value = c.member_since ? c.member_since.split(' ')[0] : '';
+              } catch (e) { document.getElementById('edit_cust_member_since').value = ''; }
               document.getElementById('editCustModal').classList.add('open');
             }
             document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
