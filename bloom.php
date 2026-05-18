@@ -56,6 +56,15 @@ $colCheck = $conn->query("SHOW COLUMNS FROM customers LIKE 'member_since'");
 if ($colCheck && $colCheck->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN member_since DATETIME NULL DEFAULT NULL");
 }
+// Ensure `contact_email` and `contact_number` columns exist on `customers`
+$colCheckEmail = $conn->query("SHOW COLUMNS FROM customers LIKE 'contact_email'");
+if ($colCheckEmail && $colCheckEmail->num_rows === 0) {
+  $conn->query("ALTER TABLE customers ADD COLUMN contact_email VARCHAR(255) NULL DEFAULT NULL");
+}
+$colCheckPhone = $conn->query("SHOW COLUMNS FROM customers LIKE 'contact_number'");
+if ($colCheckPhone && $colCheckPhone->num_rows === 0) {
+  $conn->query("ALTER TABLE customers ADD COLUMN contact_number VARCHAR(32) NULL DEFAULT NULL");
+}
 
 if (!isLoggedIn() && $page !== "login" && $page !== "register") {
   header("Location: ?page=login");
@@ -396,15 +405,26 @@ if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
 if ($page === "crm") {
   if (isset($_POST["add_customer"])) {
     $n = $conn->real_escape_string(isset($_POST["full_name"])    ? $_POST["full_name"]    : "");
-    $c = $conn->real_escape_string(isset($_POST["contact_info"]) ? $_POST["contact_info"] : "");
-    if (strpos($c, "@") !== false) { //strpos() to check if contact info contains "@" before validating as email
-      $emailCheck = validateEmail($c);
-      if ($emailCheck !== true) {
-        $_SESSION["crm_error"] = $emailCheck;
-        header("Location: ?page=crm");
-        exit;
-      }
+    $email_raw = isset($_POST["contact_email"]) ? trim($_POST["contact_email"]) : '';
+    $phone_raw = isset($_POST["contact_number"]) ? trim($_POST["contact_number"]) : '';
+
+    // Validation: email required, must be gmail and only letters/numbers/periods before @
+    if ($email_raw === '' || !preg_match('/^[A-Za-z0-9.]+@gmail\.com$/i', $email_raw)) {
+      $_SESSION["crm_error"] = 'Email is required and must be a valid Gmail address (only letters, numbers and periods allowed before @gmail.com).';
+      header("Location: ?page=crm");
+      exit;
     }
+
+    // Validation: phone required, must be exactly 11 digits
+    if (!preg_match('/^[0-9]{11}$/', $phone_raw)) {
+      $_SESSION["crm_error"] = 'Contact number is required and must be exactly 11 digits (numbers only).';
+      header("Location: ?page=crm");
+      exit;
+    }
+
+    $c_email = $conn->real_escape_string($email_raw);
+    $c_phone = $conn->real_escape_string($phone_raw);
+    $c_combined = $conn->real_escape_string($c_email . ' / ' . $c_phone);
     // ── NEW: customer photo upload ──
     $photo_path = "";
     if (isset($_FILES["cust_photo"]) && $_FILES["cust_photo"]["error"] === 0) {
@@ -416,7 +436,7 @@ if ($page === "crm") {
     // Member Since handling: accept an optional date input and store into member_since
     $member_since = isset($_POST['member_since']) && $_POST['member_since'] !== '' ? $conn->real_escape_string($_POST['member_since']) : null;
     $member_since_sql = $member_since ? "'" . $member_since . "'" : "NULL";
-    $conn->query("INSERT INTO customers (full_name,contact_info,photo_url,member_since) VALUES ('$n','$c','$photo_path', $member_since_sql)");
+    $conn->query("INSERT INTO customers (full_name,contact_info,contact_email,contact_number,photo_url,member_since) VALUES ('$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql)");
     header("Location: ?page=crm");
     exit;
   }
@@ -429,15 +449,23 @@ if ($page === "crm") {
   if (isset($_POST["update_customer"])) {
     $id = (int)(isset($_POST["customer_id"])  ? $_POST["customer_id"]  : 0);
     $n  = $conn->real_escape_string(isset($_POST["full_name"])    ? $_POST["full_name"]    : "");
-    $c  = $conn->real_escape_string(isset($_POST["contact_info"]) ? $_POST["contact_info"] : "");
-    if (strpos($c, "@") !== false) {
-      $emailCheck = validateEmail($c);
-      if ($emailCheck !== true) {
-        $_SESSION["crm_error"] = $emailCheck;
-        header("Location: ?page=crm");
-        exit;
-      }
+    $email_raw = isset($_POST["contact_email"]) ? trim($_POST["contact_email"]) : '';
+    $phone_raw = isset($_POST["contact_number"]) ? trim($_POST["contact_number"]) : '';
+
+    if ($email_raw === '' || !preg_match('/^[A-Za-z0-9.]+@gmail\.com$/i', $email_raw)) {
+      $_SESSION["crm_error"] = 'Email is required and must be a valid Gmail address (only letters, numbers and periods allowed before @gmail.com).';
+      header("Location: ?page=crm");
+      exit;
     }
+    if (!preg_match('/^[0-9]{11}$/', $phone_raw)) {
+      $_SESSION["crm_error"] = 'Contact number is required and must be exactly 11 digits (numbers only).';
+      header("Location: ?page=crm");
+      exit;
+    }
+
+    $c_email = $conn->real_escape_string($email_raw);
+    $c_phone = $conn->real_escape_string($phone_raw);
+    $c_combined = $conn->real_escape_string($c_email . ' / ' . $c_phone);
     // ── NEW: customer photo upload ──
     $photo_sql = "";
     if (isset($_FILES["cust_photo"]) && $_FILES["cust_photo"]["error"] === 0) {
@@ -453,7 +481,7 @@ if ($page === "crm") {
       $ms = $conn->real_escape_string($_POST['member_since']);
       $created_sql = ", member_since='$ms'";
     }
-    $conn->query("UPDATE customers SET full_name='$n',contact_info='$c'$photo_sql$created_sql WHERE customer_id=$id");
+    $conn->query("UPDATE customers SET full_name='$n',contact_info='$c_combined',contact_email='$c_email',contact_number='$c_phone'$photo_sql$created_sql WHERE customer_id=$id");
     header("Location: ?page=crm");
     exit;
   }
@@ -917,7 +945,7 @@ function factorial(int $n): int
 
     .stat-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      grid-template-columns: repeat(4, 1fr);
       gap: 16px;
       margin-bottom: 28px;
     }
@@ -2828,16 +2856,7 @@ function factorial(int $n): int
                 <div class="stat-value" style="color:var(--green);">&#8369;<?php echo number_format($daily_rev, 2); ?></div>
                 <div class="stat-hint"><?php echo $daily_trx; ?> transaction<?php echo $daily_trx != 1 ? 's' : ''; ?> today</div>
               </div>
-              <div class="stat-card">
-                <div class="stat-label">Session Started</div>
-                <div class="stat-value" style="font-size:18px; color:var(--blue);">
-                  <?= isset($_SESSION['login_time']) ? date('h:i A', strtotime($_SESSION['login_time'])) : 'N/A' ?>
-                </div>
-                <div class="stat-hint">
-                  <?= isset($_SESSION['login_time']) ? date('d M Y', strtotime($_SESSION['login_time'])) : '' ?>
-                  &middot; ID: <?= htmlspecialchars($_SESSION['user_id'], ENT_QUOTES, 'UTF-8') ?>
-                </div>
-              </div>
+              <!-- Session Started card removed -->
 
               <div class="stat-card">
                 <div class="stat-label">Total Products</div>
@@ -3348,7 +3367,8 @@ function factorial(int $n): int
                   <thead>
                     <tr>
                       <th>Customer</th>
-                      <th>Contact</th>
+                      <th>Email</th>
+                      <th>Contact Number</th>
                       <th>Loyalty Points</th>
                       <th>Member Since</th>
                       <th>Actions</th>
@@ -3357,7 +3377,7 @@ function factorial(int $n): int
                   <tbody>
                     <?php if (empty($customers)): ?>
                       <tr>
-                        <td colspan="5" style="text-align:center; color:var(--text-3); padding:32px;">No customers yet.</td>
+                        <td colspan="6" style="text-align:center; color:var(--text-3); padding:32px;">No customers yet.</td>
                       </tr>
                       <?php else: foreach ($customers as $c):
                         $av = strtoupper(substr($c['full_name'], 0, 1));
@@ -3379,7 +3399,8 @@ function factorial(int $n): int
                             </div>
                           </td>
 
-                          <td style="color:var(--text-2);"><?= htmlspecialchars($c['contact_info'] ?? '&#8212;', ENT_QUOTES, 'UTF-8') ?></td>
+                          <td style="color:var(--text-2);"><?= htmlspecialchars($c['contact_email'] ?? '&#8212;', ENT_QUOTES, 'UTF-8') ?></td>
+                          <td style="color:var(--text-2);"><?= htmlspecialchars($c['contact_number'] ?? '&#8212;', ENT_QUOTES, 'UTF-8') ?></td>
                           <td><span class="badge badge-brown"><?= number_format($c['loyalty_points']) ?> pts</span></td>
                           <td style="color:var(--text-3); font-size:12px;"><?= !empty($c['member_since']) ? date('d M Y', strtotime($c['member_since'])) : '&#8212;' ?></td>
                           <td>
@@ -3408,7 +3429,10 @@ function factorial(int $n): int
               </div>
               <form method="POST" action="?page=crm" enctype="multipart/form-data">
                 <div class="form-group"><label>Full Name</label><input type="text" name="full_name" required></div>
-                <div class="form-group"><label>Email / Contact</label><input type="text" name="contact_info" placeholder="email@example.com or 09XX-XXX-XXXX"></div>
+                <div class="form-row">
+                  <div class="form-group"><label>Email</label><input type="email" name="contact_email" placeholder="you@gmail.com" pattern="[A-Za-z0-9.]+@gmail\.com" title="Must be a Gmail address (only letters, numbers, and periods allowed before @)" required></div>
+                  <div class="form-group"><label>Contact Number</label><input type="text" name="contact_number" inputmode="numeric" pattern="[0-9]{11}" maxlength="11" placeholder="09XXXXXXXXX" title="11 digits, numbers only" required></div>
+                </div>
                 <div class="form-group"><label>Member Since</label><input type="date" name="member_since" value="<?= htmlspecialchars($date_today, ENT_QUOTES, 'UTF-8') ?>"></div>
                 <div class="form-group"><label>Profile Photo</label><input type="file" name="cust_photo" accept="image/*" style="padding:6px;"></div>
                 <button type="submit" name="add_customer" class="btn btn-primary btn-full">Save Customer</button>
@@ -3425,7 +3449,10 @@ function factorial(int $n): int
               <form method="POST" action="?page=crm" enctype="multipart/form-data">
                 <input type="hidden" name="customer_id" id="edit_cust_id">
                 <div class="form-group"><label>Full Name</label><input type="text" name="full_name" id="edit_cust_name" required></div>
-                <div class="form-group"><label>Email / Contact</label><input type="text" name="contact_info" id="edit_cust_contact"></div>
+                <div class="form-row">
+                  <div class="form-group"><label>Email</label><input type="email" name="contact_email" id="edit_cust_email" pattern="[A-Za-z0-9.]+@gmail\.com" title="Must be a Gmail address (only letters, numbers, and periods allowed before @gmail.com)" required></div>
+                  <div class="form-group"><label>Contact Number</label><input type="text" name="contact_number" id="edit_cust_number" inputmode="numeric" pattern="[0-9]{11}" maxlength="11" placeholder="09XXXXXXXXX" title="11 digits, numbers only" required></div>
+                </div>
                 <div class="form-group"><label>Member Since</label><input type="date" name="member_since" id="edit_cust_member_since"></div>
                 <div class="form-group"><label>Profile Photo</label><input type="file" name="cust_photo" accept="image/*" style="padding:6px;"></div>
                 <button type="submit" name="update_customer" class="btn btn-primary btn-full">Update Customer</button>
@@ -3436,7 +3463,8 @@ function factorial(int $n): int
             function openEditCust(c) {
               document.getElementById('edit_cust_id').value = c.customer_id;
               document.getElementById('edit_cust_name').value = c.full_name;
-              document.getElementById('edit_cust_contact').value = c.contact_info || '';
+              document.getElementById('edit_cust_email').value = c.contact_email || '';
+              document.getElementById('edit_cust_number').value = c.contact_number || '';
               try {
                 document.getElementById('edit_cust_member_since').value = c.member_since ? c.member_since.split(' ')[0] : '';
               } catch (e) { document.getElementById('edit_cust_member_since').value = ''; }
