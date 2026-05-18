@@ -1225,8 +1225,20 @@ function factorial(int $n): int
       border: 1px solid var(--taupe-l);
     }
 
+    .modal-box.profile {
+      max-width: 900px;
+      padding: 36px 40px;
+    }
+
+    .modal-box.profile .profile-table th,
+    .modal-box.profile .profile-table td {
+      white-space: nowrap;
+      padding: 13px 20px;
+      font-size: 14px;
+    }
+
     .modal-box.wide {
-      max-width: 680px;
+      max-width: 2000px;
     }
 
     .modal-header {
@@ -1259,6 +1271,18 @@ function factorial(int $n): int
       color: var(--red);
       border-color: #E0B0B0;
     }
+
+    #myProfileModal {
+  width: 100vw !important;
+  height: 100vh !important;
+  left: 0 !important;
+  top: 0 !important;
+}
+#myProfileModal .modal-box {
+  max-width: 900px !important;
+  width: min(900px, 92vw) !important;
+}
+
 
     /* ── Auth ── */
     .auth-wrap {
@@ -2235,7 +2259,7 @@ function factorial(int $n): int
 
     <!-- Payment Modal -->
     <div class="overlay" id="pay_overlay">
-      <div class="modal-box wide">
+      <div class="modal-box wide" style="max-width:900px !important; width:900px;">
         <div class="modal-header">
           <span class="modal-title">Complete Payment</span>
           <button class="modal-close" onclick="closePayModal()">&times;</button>
@@ -2622,13 +2646,13 @@ function factorial(int $n): int
           </div>
           <a href="?page=logout" class="sb-logout">Sign Out</a>
         </div>
-        <!-- ══ MY PROFILE MODAL (matches Employees styling) ══ -->
+        <!-- ══ MY PROFILE MODAL ══ -->
         <div class="overlay" id="myProfileModal">
-          <div class="modal-box wide">
-            <div class="modal-header">
-              <span class="modal-title">My Profile</span>
-              <button class="modal-close" onclick="document.getElementById('myProfileModal').classList.remove('open')">&times;</button>
-            </div>
+        <div class="modal-box profile">
+          <div class="modal-header">
+            <span class="modal-title">My Profile</span>
+            <button class="modal-close" onclick="document.getElementById('myProfileModal').classList.remove('open')">&times;</button>
+          </div>
 
             <div style="display:flex; align-items:center; gap:16px; margin-bottom:22px; padding:16px; background:var(--oatmeal); border:1px solid var(--taupe-l); border-radius:var(--radius-lg);">
               <div style="width:64px; height:64px; border-radius:50%; background:linear-gradient(135deg, var(--chestnut-l), var(--chestnut-d)); color:#fff; font-weight:700; font-size:20px; display:flex; align-items:center; justify-content:center; overflow:hidden; box-shadow:0 2px 8px rgba(56,46,40,.3); flex-shrink:0;">
@@ -2673,15 +2697,16 @@ function factorial(int $n): int
                 <span class="badge badge-gray">Session History</span>
               </div>
               <div class="tbl-wrap" style="border:1px solid var(--taupe-l); border-radius:var(--radius); overflow:hidden;">
-                <table>
+                <table class="profile-table" style="width:100%; table-layout:auto;">
                   <thead>
                     <tr>
-                      <th>Date</th>
-                      <th>Login Time</th>
-                      <th>Logout Time</th>
-                      <th>Duration</th>
+                      <th style="min-width:140px;">Date</th>
+                      <th style="min-width:130px;">Login Time</th>
+                      <th style="min-width:130px;">Logout Time</th>
+                      <th style="min-width:110px;">Duration</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     <tr>
                       <td colspan="4" style="text-align:center; padding:24px; color:var(--text-3); font-style:italic;">No login records to display yet.</td>
