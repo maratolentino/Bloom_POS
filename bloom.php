@@ -319,12 +319,21 @@ if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
     header("Location: ?page=inventory&tab=items");
     exit;
   }
-  if (isset($_POST["clone_sku"])) {
-    $sku = $conn->real_escape_string($_POST["clone_sku"]);
-    $new_sku = cloneProductBySku($conn, $sku);
-    header("Location: ?page=inventory&tab=items" . ($new_sku ? "&clone=success" : "&clone=fail"));
+
+// Handle Add Variant Form Submission
+  if (isset($_POST["add_variant_submit"])) {
+    $original_sku = $conn->real_escape_string($_POST["original_sku"]);
+    $new_sku      = $conn->real_escape_string($_POST["new_sku"]);
+    $variant_name = $conn->real_escape_string($_POST["variant_name"]);
+    $variant_qty  = (int)$_POST["variant_qty"];
+
+    // FIXED: Now calling the accurate function name using the __clone engine
+    addVariantWithClone($conn, $original_sku, $new_sku, $variant_name, $variant_qty);
+
+    header("Location: ?page=inventory&tab=items");
     exit;
   }
+
   if (isset($_POST["delete_sku"])) {
     $sku = $conn->real_escape_string(isset($_POST["delete_sku"]) ? $_POST["delete_sku"] : "");
     $conn->query("DELETE FROM inventory WHERE sku='$sku'");
@@ -1757,6 +1766,36 @@ function factorial(int $n): int
       font-weight: 700;
     }
 
+    /* ── New Variant ── */
+    .btn-variant {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background-color: #ffffff;
+    color: #4a3f35; /* Earthy/chestnut tint */
+    border: 1px solid #dcd6d0;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    .btn-variant:hover {
+        background-color: #fcfbfa;
+        border-color: #c5bbb2;
+        color: #2e251e;
+        transform: translateY(-1px);
+    }
+
+    .btn-variant:active {
+        transform: translateY(0);
+        background-color: #f5f2ef;
+    }
+
     /* ── Alerts ── */
     .alert {
       padding: 14px 18px;
@@ -2968,12 +3007,13 @@ function factorial(int $n): int
                           <?php if ($hasDisc): ?><span style="font-size:10px; text-decoration:line-through; color:var(--text-3); margin-left:4px;">&#8369;<?= number_format($item['price'], 2) ?></span><?php endif; ?>
                         </div>
                         <div class="inv-card-stock">Stock: <?= $item['stock_qty'] ?></div>
-                        <div class="inv-actions">
-                          <form method="POST" action="?page=inventory&tab=items" onsubmit="return confirm('Clone this product?');" style="margin:0;">
-                            <input type="hidden" name="clone_sku" value="<?= htmlspecialchars($item['sku'], ENT_QUOTES, 'UTF-8') ?>">
-                            <button type="submit" class="btn btn-sm btn-secondary">Clone</button>
-                          </form>
+                        <div class="inv-actions" style="margin-top: 10px; width: 100%;">
+                            <button type="button" class="btn-variant" style="width: 100%;" onclick="event.stopPropagation(); openVariantModal(<?= htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8') ?>)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                Add Variant
+                            </button>
                         </div>
+
                       </div>
                     </div>
                   <?php endforeach; ?>
@@ -3125,6 +3165,58 @@ function factorial(int $n): int
               </form>
             </div>
           </div>
+
+          <!-- Add Variant Modal -->
+          <div class="overlay" id="addVariantModal">
+            <div class="modal-box" style="max-width:380px;">
+              <div class="modal-header">
+                <span class="modal-title">Add Product Variant</span>
+                <button class="modal-close" type="button" onclick="document.getElementById('addVariantModal').classList.remove('open')">&times;</button>
+              </div>
+              <form method="POST" action="?page=inventory&tab=items">
+                <input type="hidden" name="original_sku" id="variant_orig_sku">
+                
+                <div class="form-group">
+                  <label>Base Product</label>
+                  <input type="text" id="variant_orig_name" readonly style="background:#f4f1ee; color:#777;">
+                </div>
+                
+                <div class="form-group">
+                  <label>New Variant SKU / ID</label>
+                  <input type="text" name="new_sku" id="variant_new_sku" placeholder="e.g. ROSE-002" required>
+                </div>
+                
+                <div class="form-group">
+                  <label>Variant Color / Specifics</label>
+                  <input type="text" name="variant_name" id="variant_new_name" placeholder="e.g. White Rose" required>
+                </div>
+                
+                <div class="form-group">
+                  <label>Initial Stock Quantity</label>
+                  <input type="number" name="variant_qty" placeholder="0" min="0" required>
+                </div>
+                
+                <p style="font-size:12px; color:#777; margin-bottom:14px;">
+                  * Base price, Category, Promotions, and Images are automatically inherited.
+                </p>
+
+                <button type="submit" name="add_variant_submit" class="btn btn-primary btn-full">Save Variant</button>
+              </form>
+            </div>
+          </div>
+
+          <script>
+          function openVariantModal(item) {
+              document.getElementById('variant_orig_sku').value = item.sku;
+              document.getElementById('variant_orig_name').value = item.product_name + ' (' + item.sku + ')';
+              
+              // Suggest placeholder text variations
+              document.getElementById('variant_new_sku').value = item.sku + '-VAR';
+              document.getElementById('variant_new_name').value = item.product_name + ' (Variant)';
+              
+              document.getElementById('addVariantModal').classList.add('open');
+          }
+          </script>          
 
           <!-- Add Category Modal -->
           <div class="overlay" id="addCatModal">

@@ -42,15 +42,7 @@ class Product {
         return $this->name . " (" . $this->sku . ") - ₱" . number_format($this->price, 2) . " | Stock: " . $this->stock . " [" . $this->category . "]";
     }
 
-    // Clone helper for module use
-    public function cloneProduct(): self {
-        return clone $this;
-    }
 
-    public function __clone() { //clone() to modify the SKU and name when a product is cloned, ensuring the new product has a unique identifier and name
-        $this->sku = $this->sku . '-COPY';
-        $this->name .= ' (Copy)';
-    }
 
     public static function fromDbRow(array $row): self {
         // Factory Method: instantiate the correct subclass based on category
@@ -158,7 +150,18 @@ class Product {
         }
         return false;
     }
-}
+    public function __clone() {
+            // Appends a temporary variant suffix to avoid primary key constraints
+            $this->sku  = $this->sku . "-VAR"; 
+            $this->name = $this->name . " (Variant)";
+            
+            // Reset stock for the new variant branch so it starts clean
+            $this->stock = 0; 
+        }
+    } //
+
+
+
 
 // Inheritance: Child classes extending the base Product class
 
@@ -167,6 +170,7 @@ class FlowerProduct extends Product { //extends Product to create a specific typ
         parent::__construct($sku, $name, $price, $stock, "Flowers", "Fresh cut flowers");
     }
 }
+
 
 class ArrangementProduct extends Product {
     public function __construct(string $sku, string $name, float $price, int $stock) {

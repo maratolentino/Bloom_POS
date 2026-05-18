@@ -49,6 +49,62 @@ function putonsale(mysqli $conn, string $sku, string $discount_id): bool {
     return $result;
 }
 
+/**
+ * Creates a variant by cloning an existing Product object instance, 
+ * applying custom variant properties, and writing a new row via INSERT.
+ */
+function addVariantWithClone(mysqli $conn, string $original_sku, string $new_sku, string $variant_name, int $stock_qty): bool {
+    // 1. Fetch original row from database
+    $stmt = $conn->prepare("SELECT * FROM inventory WHERE sku = ?");
+    if (!$stmt) return false;
+    $stmt->bind_param("s", $original_sku);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$row) return false;
+
+    // Save the genuine database foreign keys before cloning objects
+    $real_category_id = $row['category_id']; 
+    $real_discount_id = $row['discount_id'];
+    $image_url        = $row['image_url'];
+
+    // 2. Instantiate the base Product object model
+    $originalProduct = new Product(
+        $row['sku'], 
+        $row['product_name'], 
+        (float)$row['price'], 
+        (int)$row['stock_qty'], 
+        $row['category_id'] ?? 'General', 
+        $row['description'] ?? '', 
+        $row['discount_id']
+    );
+
+    // 3. Trigger PHP's magic __clone engine
+    $clonedProduct = clone $originalProduct;
+
+    // 4. Override the temporary clone placeholders with your user's explicit input fields
+    $clonedProduct->__set('sku', $new_sku);
+    $clonedProduct->__set('name', $variant_name);
+    $clonedProduct->__set('stock', $stock_qty);
+
+    // 5. Execute a completely clean, separate database INSERT operation
+    $stmt = $conn->prepare("INSERT INTO inventory (sku, product_name, price, stock_qty, category_id, discount_id, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    if (!$stmt) return false;
+
+    // Extract values safely. Notice we pass the true integer $real_category_id instead of text string
+    $sku   = $clonedProduct->sku;
+    $name  = $clonedProduct->name;
+    $price = $clonedProduct->price;
+    $stock = $clonedProduct->stock;
+
+    $stmt->bind_param("ssdiiss", $sku, $name, $price, $stock, $real_category_id, $real_discount_id, $image_url);
+    $result = $stmt->execute();
+    $stmt->close();
+
+    return $result;
+}
+
 // removeDiscountFromProduct() to remove the discount from the product in the database and update the object's discount_id property
 function removeDiscountFromProduct(mysqli $conn, string $sku): bool {
     $stmt = $conn->prepare("UPDATE inventory SET discount_id = NULL WHERE sku = ?");
@@ -59,74 +115,6 @@ function removeDiscountFromProduct(mysqli $conn, string $sku): bool {
     $result = $stmt->execute();
     $stmt->close();
     return $result;
-}
-
-function cloneProductBySku(mysqli $conn, string $sku): ?string {
-    $stmt = $conn->prepare(
-        "SELECT inventory.*, categories.category_name
-        FROM inventory
-        LEFT JOIN categories ON inventory.category_id = categories.category_id
-        WHERE inventory.sku = ?"
-    );
-    if (!$stmt) {
-        return null;
-    }
-
-    $stmt->bind_param("s", $sku);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result ? $result->fetch_assoc() : null;
-    $stmt->close();
-
-    if (!$row) {
-        return null;
-    }
-
-    $product = Product::fromDbRow($row);
-    $copy = $product->cloneProduct();
-
-    // Reset stock to 0 for the cloned item (placeholder entry with no actual stock)
-    $copy->stock = 0;
-
-    $category_id = $row['category_id'] !== null ? $row['category_id'] : null;
-    $discount_id = $row['discount_id'] ?? null;
-    $image_url = $row['image_url'] ?? '';
-
-    $insert = $conn->prepare(
-        "INSERT INTO inventory (sku, product_name, price, stock_qty, category_id, discount_id, image_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?)"
-    );
-    if (!$insert) {
-        return null;
-    }
-
-    $insert->bind_param(
-        "ssdisss",
-        $copy->sku,
-        $copy->name,
-        $copy->price,
-        $copy->stock,
-        $category_id,
-        $discount_id,
-        $image_url
-    );
-
-    if (!$insert->execute()) {
-        $insert->close();
-        return null;
-    }
-
-    $insert->close();
-
-    // Log with qty_changed = 0 since this is a placeholder entry with no actual stock added
-    $log = $conn->prepare("INSERT INTO inventory_logs (sku, action_type, qty_changed) VALUES (?, 'CLONE', 0)");
-    if ($log) {
-        $log->bind_param("s", $copy->sku);
-        $log->execute();
-        $log->close();
-    }
- 
-    return $copy->sku;
 }
 
 ?>
