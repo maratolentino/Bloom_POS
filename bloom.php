@@ -244,9 +244,8 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
 
 // ── Inventory CRUD ────────────────────────────────────────────
 if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
-  $form_action = isset($_POST["form_action"]) ? $_POST["form_action"] : '';
-  if ($form_action === "add_product" || $form_action === "update_product") {
-    $is_update  = $form_action === "update_product";
+  if (isset($_POST["add_product"]) || isset($_POST["update_product"])) {
+    $is_update  = isset($_POST["update_product"]);
     $sku        = $conn->real_escape_string(isset($_POST["sku"])          ? $_POST["sku"]          : "");
     $old_sku    = $conn->real_escape_string(isset($_POST["old_sku"])      ? $_POST["old_sku"]      : $sku);
     $name       = $conn->real_escape_string(isset($_POST["name"])         ? $_POST["name"]         : "");
@@ -285,7 +284,7 @@ if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
       $dbSuccess = $stmt->execute();
       $stmt->close();
     }
- 
+
     $category_name = '';
     if ($cat_id !== null) {
       $categoryStmt = $conn->prepare("SELECT category_name FROM categories WHERE category_id = ?");
@@ -320,19 +319,10 @@ if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
     header("Location: ?page=inventory&tab=items");
     exit;
   }
-  if ($form_action === 'add_variant') {
-    // Variant creation safely duplicates properties while preserving the parent SKU unchanged.
-    $parentSku = $conn->real_escape_string(isset($_POST['variant_parent_sku']) ? $_POST['variant_parent_sku'] : '');
-    $color = trim(isset($_POST['variant_color']) ? $_POST['variant_color'] : '');
-    
-    // Check for both 'variant_qty' and fallback 'qty' depending on your HTML modal setup
-    $qty = (int)(isset($_POST['variant_qty']) ? $_POST['variant_qty'] : (isset($_POST['qty']) ? $_POST['qty'] : 0));
-
-    if ($parentSku !== '' && $color !== '' && $qty >= 0) {
-      createVariantBySku($conn, $parentSku, $color, $qty);
-    }
-
-    header('Location: ?page=inventory&tab=items');
+  if (isset($_POST["clone_sku"])) {
+    $sku = $conn->real_escape_string($_POST["clone_sku"]);
+    $new_sku = cloneProductBySku($conn, $sku);
+    header("Location: ?page=inventory&tab=items" . ($new_sku ? "&clone=success" : "&clone=fail"));
     exit;
   }
   if (isset($_POST["delete_sku"])) {
@@ -2979,7 +2969,10 @@ function factorial(int $n): int
                         </div>
                         <div class="inv-card-stock">Stock: <?= $item['stock_qty'] ?></div>
                         <div class="inv-actions">
-                          <button type="button" class="btn btn-sm btn-secondary" onclick="openVariantModal(event, <?= json_encode($item['sku'], JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP) ?>)">Add Variant</button>
+                          <form method="POST" action="?page=inventory&tab=items" onsubmit="return confirm('Clone this product?');" style="margin:0;">
+                            <input type="hidden" name="clone_sku" value="<?= htmlspecialchars($item['sku'], ENT_QUOTES, 'UTF-8') ?>">
+                            <button type="submit" class="btn btn-sm btn-secondary">Clone</button>
+                          </form>
                         </div>
                       </div>
                     </div>
@@ -3106,12 +3099,9 @@ function factorial(int $n): int
                 <button class="modal-close" onclick="document.getElementById('productModal').classList.remove('open')">&times;</button>
               </div>
               <form method="POST" action="?page=inventory&tab=items" enctype="multipart/form-data" id="prod_form">
-                <input type="hidden" name="form_action" id="form_action" value="add_product">
                 <input type="hidden" name="old_sku" id="hidden_sku">
-                <input type="hidden" name="variant_parent_sku" id="variant_parent_sku">
                 <div class="form-group"><label>SKU / ID</label><input type="text" name="sku" id="form_sku" placeholder="ROSE-001" required></div>
                 <div class="form-group"><label>Product Name</label><input type="text" name="name" id="form_name" placeholder="Product name" required></div>
-                <div class="form-group" id="variant_color_group" style="display:none;"><label>Variant Color</label><input type="text" name="variant_color" id="variant_color" placeholder="e.g. White"></div>
                 <div class="form-row">
                   <div class="form-group"><label>Price (&#8369;)</label><input type="text" name="price" id="form_price" oninput="fmtCurr(this)" placeholder="0.00" required></div>
                   <div class="form-group"><label>Stock Qty</label><input type="number" name="qty" id="form_qty" placeholder="0" required></div>
@@ -3130,8 +3120,8 @@ function factorial(int $n): int
                     </select>
                   </div>
                 </div>
-                <div class="form-group" id="product_image_group"><label>Product Image</label><input type="file" name="product_image" accept="image/*" style="padding:6px;"></div>
-                <button type="submit" id="prod_submit_btn" class="btn btn-primary btn-full" style="margin-top:6px;">Save Product</button>
+                <div class="form-group"><label>Product Image</label><input type="file" name="product_image" accept="image/*" style="padding:6px;"></div>
+                <button type="submit" id="prod_submit_btn" name="add_product" class="btn btn-primary btn-full" style="margin-top:6px;">Save Product</button>
               </form>
             </div>
           </div>
@@ -3193,20 +3183,9 @@ function factorial(int $n): int
           <script>
             function openAddModal() {
               document.getElementById('prod_modal_title').textContent = 'New Product';
-              document.getElementById('form_action').value = 'add_product';
-              document.getElementById('prod_submit_btn').textContent = 'Save Product';
+              document.getElementById('prod_submit_btn').name = 'add_product';
               document.getElementById('prod_form').reset();
               document.getElementById('hidden_sku').value = '';
-              document.getElementById('variant_parent_sku').value = '';
-              document.getElementById('form_sku').readOnly = false;
-              document.getElementById('form_sku').required = true;
-              document.getElementById('form_name').readOnly = false;
-              document.getElementById('form_price').readOnly = false;
-              document.getElementById('form_cat').disabled = false;
-              document.getElementById('form_disc').disabled = false;
-              document.getElementById('variant_color_group').style.display = 'none';
-              document.getElementById('variant_color').required = false;
-              document.getElementById('product_image_group').style.display = '';
               document.getElementById('productModal').classList.add('open');
             }
 
@@ -3214,11 +3193,9 @@ function factorial(int $n): int
 
             function openEditModal(data, title = 'Edit Product') {
               document.getElementById('prod_modal_title').textContent = title;
-              document.getElementById('form_action').value = 'update_product';
-              document.getElementById('prod_submit_btn').textContent = 'Save Changes';
+              document.getElementById('prod_submit_btn').name = 'update_product';
               document.getElementById('form_sku').value = data.sku;
               document.getElementById('hidden_sku').value = data.sku;
-              document.getElementById('variant_parent_sku').value = '';
               document.getElementById('form_name').value = data.product_name;
               const p = parseFloat(data.price);
               document.getElementById('form_price').value = isNaN(p) ? '' : p.toLocaleString('en-US', {
@@ -3228,82 +3205,9 @@ function factorial(int $n): int
               document.getElementById('form_qty').value = data.stock_qty;
               document.getElementById('form_cat').value = data.category_id || '';
               document.getElementById('form_disc').value = data.discount_id || '';
-              document.getElementById('variant_color_group').style.display = 'none';
-              document.getElementById('variant_color').required = false;
-              document.getElementById('form_sku').readOnly = false;
-              document.getElementById('form_sku').required = true;
-              document.getElementById('form_name').readOnly = false;
-              document.getElementById('form_price').readOnly = false;
-              document.getElementById('form_cat').disabled = false;
-              document.getElementById('form_disc').disabled = false;
-              document.getElementById('product_image_group').style.display = '';
               document.getElementById('productModal').classList.add('open');
               document.getElementById('form_qty').focus();
             }
-
-            function openVariantModal(event, sku) {
-              if (event && typeof event.stopPropagation === 'function') {
-                event.stopPropagation();
-              }
-              
-              // Find the parent item blueprint from your local array dataset
-              const item = inventoryItems.find(i => i.sku === sku);
-              if (!item) return;
-              
-              // 1. Reset the form to clear any previous modal inputs first
-              document.getElementById('prod_form').reset();
-
-              // 2. Adjust standard modal actions and text indicators
-              document.getElementById('prod_modal_title').textContent = 'Add Variant for ' + item.product_name;
-              document.getElementById('form_action').value = 'add_variant';
-              document.getElementById('prod_submit_btn').textContent = 'Save Variant';
-
-              // 3. Set hidden identifiers used by the variant backend handler
-              document.getElementById('hidden_sku').value = '';
-              document.getElementById('variant_parent_sku').value = item.sku;
-
-              // 4. Lock original SKU and original product name fields to read-only
-              document.getElementById('form_sku').value = item.sku;
-              document.getElementById('form_sku').readOnly = true;
-              document.getElementById('form_sku').required = false;
-              
-              document.getElementById('form_name').value = item.product_name;
-              document.getElementById('form_name').readOnly = true;
-
-              // 5. Populate and lock standard pricing, categories, and discounts
-              const p = parseFloat(item.price);
-              // Using .toFixed(2) instead of .toLocaleString() to keep it clean of commas for safety
-              document.getElementById('form_price').value = isNaN(p) ? '' : p.toFixed(2);
-              document.getElementById('form_price').readOnly = true;
-              
-              document.getElementById('form_cat').value = item.category_id || '';
-              document.getElementById('form_cat').disabled = true;
-              
-              document.getElementById('form_disc').value = item.discount_id || '';
-              document.getElementById('form_disc').disabled = true;
-
-              // 6. Set up the specific inputs required for this variation item
-              // Clear variant specific quantity field (or use 'form_qty' depending on your HTML name)
-              const qtyField = document.getElementById('variant_qty') || document.getElementById('form_qty');
-              if (qtyField) {
-                qtyField.value = '0';
-                qtyField.readOnly = false;
-                qtyField.disabled = false;
-              }
-
-              // Display color input rows and make it a required field
-              document.getElementById('variant_color_group').style.display = 'block';
-              document.getElementById('variant_color').value = '';
-              document.getElementById('variant_color').required = true;
-              
-              // Hide image upload grouping since variants inherit blueprints or use custom profiles later
-              document.getElementById('product_image_group').style.display = 'none';
-
-              // 7. Reveal the modal structure to the user interface
-              document.getElementById('productModal').classList.add('open');
-              document.getElementById('variant_color').focus();
-            }
-
 
             function openEditModalBySku(sku) {
               const item = inventoryItems.find(i => i.sku === sku);
