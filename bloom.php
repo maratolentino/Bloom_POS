@@ -404,7 +404,14 @@ if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
 // ── CRM ───────────────────────────────────────────────────────
 if ($page === "crm") {
   if (isset($_POST["add_customer"])) {
-    $n = $conn->real_escape_string(isset($_POST["full_name"])    ? $_POST["full_name"]    : "");
+    $n_raw = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : '';
+    $nameCheck = validateStaffName($n_raw);
+    if ($nameCheck !== true) {
+      $_SESSION["crm_error"] = $nameCheck;
+      header("Location: ?page=crm");
+      exit;
+    }
+    $n = $conn->real_escape_string($n_raw);
     $email_raw = isset($_POST["contact_email"]) ? trim($_POST["contact_email"]) : '';
     $phone_raw = isset($_POST["contact_number"]) ? trim($_POST["contact_number"]) : '';
 
@@ -448,7 +455,14 @@ if ($page === "crm") {
   }
   if (isset($_POST["update_customer"])) {
     $id = (int)(isset($_POST["customer_id"])  ? $_POST["customer_id"]  : 0);
-    $n  = $conn->real_escape_string(isset($_POST["full_name"])    ? $_POST["full_name"]    : "");
+    $n_raw = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : '';
+    $nameCheck = validateStaffName($n_raw);
+    if ($nameCheck !== true) {
+      $_SESSION["crm_error"] = $nameCheck;
+      header("Location: ?page=crm");
+      exit;
+    }
+    $n  = $conn->real_escape_string($n_raw);
     $email_raw = isset($_POST["contact_email"]) ? trim($_POST["contact_email"]) : '';
     $phone_raw = isset($_POST["contact_number"]) ? trim($_POST["contact_number"]) : '';
 
@@ -3428,7 +3442,7 @@ function factorial(int $n): int
                 <button class="modal-close" onclick="document.getElementById('addCustModal').classList.remove('open')">&times;</button>
               </div>
               <form method="POST" action="?page=crm" enctype="multipart/form-data">
-                <div class="form-group"><label>Full Name</label><input type="text" name="full_name" required></div>
+                <div class="form-group"><label>Full Name</label><input type="text" name="full_name" pattern="[A-Za-z ]+" minlength="3" title="Name must contain letters and spaces only" required></div>
                 <div class="form-row">
                   <div class="form-group"><label>Email</label><input type="email" name="contact_email" placeholder="you@gmail.com" pattern="[A-Za-z0-9.]+@gmail\.com" title="Must be a Gmail address (only letters, numbers, and periods allowed before @)" required></div>
                   <div class="form-group"><label>Contact Number</label><input type="text" name="contact_number" inputmode="numeric" pattern="[0-9]{11}" maxlength="11" placeholder="09XXXXXXXXX" title="11 digits, numbers only" required></div>
@@ -3448,7 +3462,7 @@ function factorial(int $n): int
               </div>
               <form method="POST" action="?page=crm" enctype="multipart/form-data">
                 <input type="hidden" name="customer_id" id="edit_cust_id">
-                <div class="form-group"><label>Full Name</label><input type="text" name="full_name" id="edit_cust_name" required></div>
+                <div class="form-group"><label>Full Name</label><input type="text" name="full_name" id="edit_cust_name" pattern="[A-Za-z ]+" minlength="3" title="Name must contain letters and spaces only" required></div>
                 <div class="form-row">
                   <div class="form-group"><label>Email</label><input type="email" name="contact_email" id="edit_cust_email" pattern="[A-Za-z0-9.]+@gmail\.com" title="Must be a Gmail address (only letters, numbers, and periods allowed before @gmail.com)" required></div>
                   <div class="form-group"><label>Contact Number</label><input type="text" name="contact_number" id="edit_cust_number" inputmode="numeric" pattern="[0-9]{11}" maxlength="11" placeholder="09XXXXXXXXX" title="11 digits, numbers only" required></div>
