@@ -42,16 +42,6 @@ class Product {
         return $this->name . " (" . $this->sku . ") - ₱" . number_format($this->price, 2) . " | Stock: " . $this->stock . " [" . $this->category . "]";
     }
 
-    // Clone helper for module use
-    public function cloneProduct(): self {
-        return clone $this;
-    }
-
-    public function __clone() { //clone() to modify the SKU and name when a product is cloned, ensuring the new product has a unique identifier and name
-        $this->sku = $this->sku . '-COPY';
-        $this->name .= ' (Copy)';
-    }
-
     public static function fromDbRow(array $row): self {
         // Factory Method: instantiate the correct subclass based on category
         $category = $row['category_name'] ?? '';
@@ -96,7 +86,7 @@ class Product {
         if ($qty <= 0) {
             return false;
         }
-
+ 
         $stmt = $conn->prepare("UPDATE inventory SET stock_qty = stock_qty + ? WHERE sku = ?");
         if (!$stmt) {
             return false;

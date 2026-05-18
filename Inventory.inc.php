@@ -61,17 +61,38 @@ function removeDiscountFromProduct(mysqli $conn, string $sku): bool {
     return $result;
 }
 
-function cloneProductBySku(mysqli $conn, string $sku): ?string {
-    $stmt = $conn->prepare(
-        "SELECT inventory.*, categories.category_name
-        FROM inventory
-        LEFT JOIN categories ON inventory.category_id = categories.category_id
-        WHERE inventory.sku = ?"
-    );
+function generateVariantSku(mysqli $conn, string $sku, string $color): string {
+    $cleanColor = preg_replace('/[^A-Za-z0-9]+/', '', strtoupper($color));
+    $base = preg_replace('/[^A-Za-z0-9]+$/', '', $sku);
+    $candidate = $base . '-' . $cleanColor;
+    $suffix = 1;
+
+    while (true) {
+        $check = $conn->real_escape_string($candidate);
+        $row = $conn->query("SELECT 1 FROM inventory WHERE sku='$check' LIMIT 1");
+        if (!$row || $row->fetch_assoc() === null) {
+            break;
+        }
+        $candidate = $base . '-' . $cleanColor . '-V' . $suffix;
+        $suffix++;
+    }
+
+    return $candidate;
+}
+
+function generateVariantProductName(string $productName, string $color): string {
+    $baseName = trim(preg_replace('/\s*-\s*[^-]+$/', '', $productName));
+    if ($baseName === '') {
+        $baseName = trim($productName);
+    }
+    return trim($baseName . ' - ' . ucfirst(strtolower($color)));
+}
+
+function createVariantBySku(mysqli $conn, string $sku, string $color, int $qty): ?string {
+    $stmt = $conn->prepare("SELECT * FROM inventory WHERE sku = ?");
     if (!$stmt) {
         return null;
     }
-
     $stmt->bind_param("s", $sku);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -82,19 +103,14 @@ function cloneProductBySku(mysqli $conn, string $sku): ?string {
         return null;
     }
 
-    $product = Product::fromDbRow($row);
-    $copy = $product->cloneProduct();
-
-    // Reset stock to 0 for the cloned item (placeholder entry with no actual stock)
-    $copy->stock = 0;
-
+    $newSku = generateVariantSku($conn, $row['sku'], $color);
+    $newName = generateVariantProductName($row['product_name'], $color);
     $category_id = $row['category_id'] !== null ? $row['category_id'] : null;
     $discount_id = $row['discount_id'] ?? null;
     $image_url = $row['image_url'] ?? '';
 
     $insert = $conn->prepare(
-        "INSERT INTO inventory (sku, product_name, price, stock_qty, category_id, discount_id, image_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO inventory (sku, product_name, price, stock_qty, category_id, discount_id, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)"
     );
     if (!$insert) {
         return null;
@@ -102,10 +118,10 @@ function cloneProductBySku(mysqli $conn, string $sku): ?string {
 
     $insert->bind_param(
         "ssdisss",
-        $copy->sku,
-        $copy->name,
-        $copy->price,
-        $copy->stock,
+        $newSku,
+        $newName,
+        $row['price'],
+        $qty,
         $category_id,
         $discount_id,
         $image_url
@@ -115,18 +131,9 @@ function cloneProductBySku(mysqli $conn, string $sku): ?string {
         $insert->close();
         return null;
     }
-
     $insert->close();
 
-    // Log with qty_changed = 0 since this is a placeholder entry with no actual stock added
-    $log = $conn->prepare("INSERT INTO inventory_logs (sku, action_type, qty_changed) VALUES (?, 'CLONE', 0)");
-    if ($log) {
-        $log->bind_param("s", $copy->sku);
-        $log->execute();
-        $log->close();
-    }
- 
-    return $copy->sku;
+    return $newSku;
 }
 
 ?>
