@@ -142,6 +142,47 @@ if ($page === "logout") {
 }
 
 // ── Checkout – Finalize Sale ──────────────────────────────────
+// ── Self-Profile Update (any logged-in user) ─────────────────
+if (isLoggedIn() && isset($_POST["update_my_profile"])) {
+  $id           = $_SESSION["user_id"];
+  $name         = isset($_POST["full_name"])    ? trim($_POST["full_name"])    : "";
+  $new_passcode = isset($_POST["new_passcode"]) ? trim($_POST["new_passcode"]) : "";
+  $return_page  = isset($_POST["return_page"]) && $_POST["return_page"] !== "" ? $_POST["return_page"] : "dashboard";
+
+  $updates = [];
+
+  $nameCheck = validateStaffName($name);
+  if (is_bool($nameCheck) && $nameCheck === true) {
+    $name_esc  = $conn->real_escape_string($name);
+    $updates[] = "full_name='$name_esc'";
+    $_SESSION["user_name"] = $name;
+  }
+
+  if ($new_passcode !== "") {
+    $pc_esc    = $conn->real_escape_string($new_passcode);
+    $updates[] = "passcode='$pc_esc'";
+  }
+
+  if (isset($_FILES["profile_photo"]) && $_FILES["profile_photo"]["error"] === 0) {
+    $dir = "uploads/";
+    if (!is_dir($dir)) mkdir($dir, 0777, true);
+    $photo_path = $dir . time() . "_" . basename($_FILES["profile_photo"]["name"]);
+    if (move_uploaded_file($_FILES["profile_photo"]["tmp_name"], $photo_path)) {
+      $photo_esc = $conn->real_escape_string($photo_path);
+      $updates[] = "photo_url='$photo_esc'";
+      $_SESSION["user_photo"] = $photo_path;
+    }
+  }
+
+  if (!empty($updates)) {
+    $id_esc = $conn->real_escape_string($id);
+    $conn->query("UPDATE employees SET " . implode(",", $updates) . " WHERE employee_id='$id_esc'");
+  }
+
+  header("Location: ?page=" . urlencode($return_page));
+  exit;
+}
+
 if ($page === "checkout" && isset($_POST["finalize_sale"])) {
   $cart_data       = json_decode(isset($_POST["cart_json"])       ? $_POST["cart_json"]       : "[]",   true);
   $payment_method  = $conn->real_escape_string(isset($_POST["payment_method"])  ? $_POST["payment_method"]  : "Cash");
@@ -2566,7 +2607,7 @@ function factorial(int $n): int
         <!-- ══ UPDATED SIDEBAR FOOTER: profile photo + name ══ -->
         <div class="sb-footer">
           <div class="sb-user">
-            <div class="sb-avatar">
+            <div class="sb-avatar" onclick="document.getElementById('myProfileModal').classList.add('open')" style="cursor:pointer;" title="Edit my profile">
               <?php if (!empty($user_photo)): ?>
                 <img src="<?= htmlspecialchars($user_photo, ENT_QUOTES, 'UTF-8') ?>"
                      alt="<?= htmlspecialchars($_SESSION['user_name'], ENT_QUOTES, 'UTF-8') ?>">
@@ -2581,6 +2622,86 @@ function factorial(int $n): int
           </div>
           <a href="?page=logout" class="sb-logout">Sign Out</a>
         </div>
+        <!-- ══ MY PROFILE MODAL (matches Employees styling) ══ -->
+        <div class="overlay" id="myProfileModal">
+          <div class="modal-box wide">
+            <div class="modal-header">
+              <span class="modal-title">My Profile</span>
+              <button class="modal-close" onclick="document.getElementById('myProfileModal').classList.remove('open')">&times;</button>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:16px; margin-bottom:22px; padding:16px; background:var(--oatmeal); border:1px solid var(--taupe-l); border-radius:var(--radius-lg);">
+              <div style="width:64px; height:64px; border-radius:50%; background:linear-gradient(135deg, var(--chestnut-l), var(--chestnut-d)); color:#fff; font-weight:700; font-size:20px; display:flex; align-items:center; justify-content:center; overflow:hidden; box-shadow:0 2px 8px rgba(56,46,40,.3); flex-shrink:0;">
+                <?php if (!empty($user_photo)): ?>
+                  <img src="<?= htmlspecialchars($user_photo, ENT_QUOTES, 'UTF-8') ?>" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">
+                <?php else: ?>
+                  <?= $initials ?>
+                <?php endif; ?>
+              </div>
+              <div style="min-width:0;">
+                <div style="font-size:16px; font-weight:700; color:var(--espresso);"><?= htmlspecialchars($_SESSION['user_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                <div style="font-size:12px; color:var(--text-3); margin-top:3px;">
+                  <?= htmlspecialchars($_SESSION['user_id'], ENT_QUOTES, 'UTF-8') ?> &middot; <?= htmlspecialchars($_SESSION['user_role'], ENT_QUOTES, 'UTF-8') ?>
+                </div>
+              </div>
+            </div>
+
+            <form method="POST" action="?page=<?= htmlspecialchars($page, ENT_QUOTES, 'UTF-8') ?>" enctype="multipart/form-data">
+              <input type="hidden" name="return_page" value="<?= htmlspecialchars($page, ENT_QUOTES, 'UTF-8') ?>">
+
+              <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" name="full_name" value="<?= htmlspecialchars($_SESSION['user_name'], ENT_QUOTES, 'UTF-8') ?>" required>
+              </div>
+
+              <div class="form-group">
+                <label>Profile Photo</label>
+                <input type="file" name="profile_photo" accept="image/*" style="padding:6px;">
+              </div>
+
+              <div class="form-group">
+                <label>New Passcode <span style="color:var(--text-3); font-weight:400; text-transform:none;">(leave blank to keep current)</span></label>
+                <input type="password" name="new_passcode" placeholder="Enter new passcode" autocomplete="new-password">
+              </div>
+
+              <button type="submit" name="update_my_profile" class="btn btn-primary btn-full" style="margin-bottom:24px;">Save Changes</button>
+            </form>
+
+            <div style="border-top:1px solid var(--taupe-l); padding-top:20px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+                <div style="font-size:14px; font-weight:700; color:var(--espresso);">Login &amp; Logout Record</div>
+                <span class="badge badge-gray">Session History</span>
+              </div>
+              <div class="tbl-wrap" style="border:1px solid var(--taupe-l); border-radius:var(--radius); overflow:hidden;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Login Time</th>
+                      <th>Logout Time</th>
+                      <th>Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td colspan="4" style="text-align:center; padding:24px; color:var(--text-3); font-style:italic;">No login records to display yet.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <script>
+          (function(){
+            var _mpm = document.getElementById('myProfileModal');
+            if (_mpm) {
+              _mpm.addEventListener('click', function(e){
+                if (e.target === _mpm) _mpm.classList.remove('open');
+              });
+            }
+          })();
+        </script>
       </nav>
 
       <main class="main">
