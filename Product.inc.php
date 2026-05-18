@@ -91,6 +91,56 @@ class Product {
         return true;
     }
 
+    // Restock the product by adding the supplied quantity and updating the database
+    public function restock(mysqli $conn, int $qty): bool {
+        if ($qty <= 0) {
+            return false;
+        }
+
+        $stmt = $conn->prepare("UPDATE inventory SET stock_qty = stock_qty + ? WHERE sku = ?");
+        if (!$stmt) {
+            return false;
+        }
+
+        $stmt->bind_param("is", $qty, $this->sku);
+        $result = $stmt->execute();
+        if ($result) {
+            $this->stock += $qty;
+        }
+        $stmt->close();
+        return $result;
+    }
+
+    // Restock a product by SKU using a lightweight factory object
+    public static function restockBySku(mysqli $conn, string $sku, int $qty): bool {
+        if ($qty <= 0) {
+            return false;
+        }
+
+        $stmt = $conn->prepare(
+            "SELECT inventory.*, categories.category_name
+            FROM inventory
+            LEFT JOIN categories ON inventory.category_id = categories.category_id
+            WHERE inventory.sku = ?"
+        );
+        if (!$stmt) {
+            return false;
+        }
+
+        $stmt->bind_param("s", $sku);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result ? $result->fetch_assoc() : null;
+        $stmt->close();
+
+        if (!$row) {
+            return false;
+        }
+
+        $product = self::fromDbRow($row);
+        return $product->restock($conn, $qty);
+    }
+
     // Put product on sale
     public function putOnSale(mysqli $conn, string $discount_id): bool { //putonsale() to apply a discount to the product in the database and update the object's discount_id property
         if (putonsale($conn, $this->sku, $discount_id)) {

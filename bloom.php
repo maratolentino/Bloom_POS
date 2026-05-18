@@ -2931,8 +2931,8 @@ function factorial(int $n): int
 
             const inventoryItems = <?= json_encode($inventory, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>;
 
-            function openEditModal(data) {
-              document.getElementById('prod_modal_title').textContent = 'Edit Product';
+            function openEditModal(data, title = 'Edit Product') {
+              document.getElementById('prod_modal_title').textContent = title;
               document.getElementById('prod_submit_btn').name = 'update_product';
               document.getElementById('form_sku').value = data.sku;
               document.getElementById('hidden_sku').value = data.sku;
@@ -2952,7 +2952,7 @@ function factorial(int $n): int
             function openEditModalBySku(sku) {
               const item = inventoryItems.find(i => i.sku === sku);
               if (item) {
-                openEditModal(item);
+                openEditModal(item, 'Restock Product');
               }
             }
 
