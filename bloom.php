@@ -271,7 +271,8 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
         $conn->query("UPDATE customers SET loyalty_points = loyalty_points + $pts WHERE customer_id = $customer_id");
       }
     }
-    header("Location: ?page=checkout&success=1&trx=$transaction_id");
+    $order_skus = implode(',', array_map(function ($i) { return $i['sku']; }, $cart_data));
+    header("Location: ?page=checkout&success=1&order_id=" . urlencode($order_skus));
     exit;
   }
 }
@@ -2400,7 +2401,7 @@ function factorial(int $n): int
 
         <?php if (isset($_GET['success'])): ?>
           <div class="alert alert-success" style="flex-shrink:0;">
-            Sale <strong><?php echo htmlspecialchars(isset($_GET['trx']) ? $_GET['trx'] : '', ENT_QUOTES, 'UTF-8'); ?></strong> completed successfully.
+            Sale <strong><?php echo htmlspecialchars(isset($_GET['order_id']) ? $_GET['order_id'] : '', ENT_QUOTES, 'UTF-8'); ?></strong> completed successfully.
           </div>
         <?php endif; ?>
 
@@ -4124,7 +4125,7 @@ function factorial(int $n): int
                 <table>
                   <thead>
                     <tr>
-                      <th>Transaction ID</th>
+                      <th>Order ID</th>
                       <th>Date &amp; Time</th>
                       <th>Cashier</th>
                       <th>Payment</th>
@@ -4135,9 +4136,17 @@ function factorial(int $n): int
                   <tbody>
                     <?php $r_sales_rows = $r_sales ? $r_sales->fetch_all(MYSQLI_ASSOC) : [];
                     if (!empty($r_sales_rows)):
-                      foreach ($r_sales_rows as $s): ?>
+                      foreach ($r_sales_rows as $s):
+                        $sku_esc = $conn->real_escape_string($s['transaction_id']);
+                        $sku_res = $conn->query("SELECT sku FROM sale_items WHERE transaction_id='$sku_esc'");
+                        $sku_list = [];
+                        if ($sku_res) {
+                          while ($sk = $sku_res->fetch_assoc()) { $sku_list[] = $sk['sku']; }
+                        }
+                        $order_id_display = implode(', ', $sku_list);
+                        ?>
                         <tr>
-                          <td><span style="font-family:monospace; font-size:12px; color:var(--chestnut); font-weight:600;"><?= htmlspecialchars($s['transaction_id'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                          <td><span style="font-family:monospace; font-size:12px; color:var(--chestnut); font-weight:600;"><?= htmlspecialchars($order_id_display, ENT_QUOTES, 'UTF-8') ?></span></td>
                           <td style="color:var(--text-3); font-size:12px;"><?= date('d M Y, h:i A', strtotime($s['sale_date'])) ?></td>
                           <td style="font-weight:500;"><?= htmlspecialchars($s['cashier'] ?? '&#8212;', ENT_QUOTES, 'UTF-8') ?></td>
                           <td><span class="badge badge-gray"><?= htmlspecialchars($s['payment_method'], ENT_QUOTES, 'UTF-8') ?></span></td>
