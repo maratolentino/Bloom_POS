@@ -1,6 +1,6 @@
 <?php
 session_start();
- 
+
 // Include session handler
 require_once 'session.php';
 
@@ -10,7 +10,7 @@ $remembered_id = isset($_COOKIE['bloom_remember_id']) //isset() check to prevent
   : '';
 // ── Auto-create uploads folder ───────────────────────────────
 if (!is_dir("uploads")) {
-    mkdir("uploads", 0777, true);
+  mkdir("uploads", 0777, true);
 }
 
 date_default_timezone_set("Asia/Manila"); // Set timezone to Manila
@@ -65,6 +65,34 @@ $colCheckPhone = $conn->query("SHOW COLUMNS FROM customers LIKE 'contact_number'
 if ($colCheckPhone && $colCheckPhone->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN contact_number VARCHAR(32) NULL DEFAULT NULL");
 }
+// Ensure `approved` column exists on `customers` (1 = approved, 0 = pending)
+$colCheckApproved = $conn->query("SHOW COLUMNS FROM customers LIKE 'approved'");
+if ($colCheckApproved && $colCheckApproved->num_rows === 0) {
+  $conn->query("ALTER TABLE customers ADD COLUMN approved TINYINT(1) NOT NULL DEFAULT 1");
+}
+// Ensure `created_by`, `approved_by`, `approved_at`, and `rejection_reason` columns exist
+$colCheckCreatedBy = $conn->query("SHOW COLUMNS FROM customers LIKE 'created_by'");
+if ($colCheckCreatedBy && $colCheckCreatedBy->num_rows === 0) {
+  $conn->query("ALTER TABLE customers ADD COLUMN created_by VARCHAR(50) NULL DEFAULT NULL");
+}
+$colCheckApprovedBy = $conn->query("SHOW COLUMNS FROM customers LIKE 'approved_by'");
+if ($colCheckApprovedBy && $colCheckApprovedBy->num_rows === 0) {
+  $conn->query("ALTER TABLE customers ADD COLUMN approved_by VARCHAR(50) NULL DEFAULT NULL");
+}
+$colCheckApprovedAt = $conn->query("SHOW COLUMNS FROM customers LIKE 'approved_at'");
+if ($colCheckApprovedAt && $colCheckApprovedAt->num_rows === 0) {
+  $conn->query("ALTER TABLE customers ADD COLUMN approved_at DATETIME NULL DEFAULT NULL");
+}
+$colCheckRej = $conn->query("SHOW COLUMNS FROM customers LIKE 'rejection_reason'");
+if ($colCheckRej && $colCheckRej->num_rows === 0) {
+  $conn->query("ALTER TABLE customers ADD COLUMN rejection_reason VARCHAR(255) NULL DEFAULT NULL");
+}
+
+// Ensure approval history table exists
+$historyCheck = $conn->query("SHOW TABLES LIKE 'customer_approval_history'");
+if ($historyCheck && $historyCheck->num_rows === 0) {
+  $conn->query("CREATE TABLE customer_approval_history (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, customer_id INT NOT NULL, action VARCHAR(32) NOT NULL, by_employee_id VARCHAR(50) NULL, note VARCHAR(255) NULL, ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
 
 if (!isLoggedIn() && $page !== "login" && $page !== "register") {
   header("Location: ?page=login");
@@ -76,7 +104,8 @@ if (isLoggedIn() && $page === "login") {
 }
 
 // ── RBAC ─────────────────────────────────────────────────────
-$restricted_to_admin = ["inventory", "crm", "employees", "reports"];
+// Note: 'crm' is intentionally NOT restricted so Cashiers can access Customer module
+$restricted_to_admin = ["inventory", "employees", "reports"];
 if (isLoggedIn() && $_SESSION["user_role"] !== "Admin" && in_array($page, $restricted_to_admin)) {
   header("Location: ?page=dashboard");
   exit;
@@ -94,10 +123,10 @@ if ($page === "login" && $_SERVER["REQUEST_METHOD"] === "POST") {
   if ($row && strcmp($row["passcode"], $passcode) === 0) {  // strcmp() for exact string comparison of passcodes
     // Initialize session on successful login
     initializeSession(
-        $row["employee_id"],
-        $row["full_name"],
-        $row["role"],
-        isset($row["photo_url"]) ? $row["photo_url"] : ""
+      $row["employee_id"],
+      $row["full_name"],
+      $row["role"],
+      isset($row["photo_url"]) ? $row["photo_url"] : ""
     );
     header("Location: ?page=dashboard");
     exit;
@@ -113,33 +142,38 @@ if ($page === "login" && $_SERVER["REQUEST_METHOD"] === "POST") {
 // ── Register ──────────────────────────────────────────────────
 
 if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST") {
-    $emp_id   = isset($_POST["emp_id"])    ? trim($_POST["emp_id"])    : "";
-    $name     = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : "";
-    $role     = isset($_POST["role"])      ? $_POST["role"]            : "Cashier";
-    $passcode = isset($_POST["passcode"])  ? $_POST["passcode"]        : "";
-    $job_role = (strcasecmp($role, "Admin") === 0) ? "Manager" : "Cashier"; // strcasecmp() for case-insensitive role check
+  $emp_id   = isset($_POST["emp_id"])    ? trim($_POST["emp_id"])    : "";
+  $name     = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : "";
+  $role     = isset($_POST["role"])      ? $_POST["role"]            : "Cashier";
+  $passcode = isset($_POST["passcode"])  ? $_POST["passcode"]        : "";
+  $job_role = (strcasecmp($role, "Admin") === 0) ? "Manager" : "Cashier"; // strcasecmp() for case-insensitive role check
 
-    $nameCheck = validateStaffName($name);
-    if (!is_bool($nameCheck) || $nameCheck !== true) {
-        $reg_error = is_bool($nameCheck) ? "Invalid name." : $nameCheck;
-    } elseif (!preg_match("/^[a-zA-Z0-9-]+$/", $emp_id)) { //preg_match() to validate employee ID format (only letters, numbers, hyphens)
-        $reg_error = "Employee ID may only contain letters, numbers, and hyphens.";
-    } else {
-        // ── NEW: profile photo upload ──
-        $photo_path = "";
-        if (isset($_FILES["emp_photo"]) && $_FILES["emp_photo"]["error"] === 0) {
-            $dir = "uploads/"; if (!is_dir($dir)) mkdir($dir, 0777, true);
-            $photo_path = $dir . time() . "_" . basename($_FILES["emp_photo"]["name"]);
-            move_uploaded_file($_FILES["emp_photo"]["tmp_name"], $photo_path);
-        }
-
-        $stmt = $conn->prepare("INSERT INTO employees (employee_id, full_name, role, passcode, job_role, photo_url) VALUES (?,?,?,?,?,?)");
-        $stmt->bind_param("ssssss", $emp_id, $name, $role, $passcode, $job_role, $photo_path);
-        //                 ^^^^^^ 6 s's — one per ? placeholder
-
-        if ($stmt->execute()) { header("Location: ?page=login&registered=1"); exit; }
-        else { $reg_error = "Employee ID already exists."; }
+  $nameCheck = validateStaffName($name);
+  if (!is_bool($nameCheck) || $nameCheck !== true) {
+    $reg_error = is_bool($nameCheck) ? "Invalid name." : $nameCheck;
+  } elseif (!preg_match("/^[a-zA-Z0-9-]+$/", $emp_id)) { //preg_match() to validate employee ID format (only letters, numbers, hyphens)
+    $reg_error = "Employee ID may only contain letters, numbers, and hyphens.";
+  } else {
+    // ── NEW: profile photo upload ──
+    $photo_path = "";
+    if (isset($_FILES["emp_photo"]) && $_FILES["emp_photo"]["error"] === 0) {
+      $dir = "uploads/";
+      if (!is_dir($dir)) mkdir($dir, 0777, true);
+      $photo_path = $dir . time() . "_" . basename($_FILES["emp_photo"]["name"]);
+      move_uploaded_file($_FILES["emp_photo"]["tmp_name"], $photo_path);
     }
+
+    $stmt = $conn->prepare("INSERT INTO employees (employee_id, full_name, role, passcode, job_role, photo_url) VALUES (?,?,?,?,?,?)");
+    $stmt->bind_param("ssssss", $emp_id, $name, $role, $passcode, $job_role, $photo_path);
+    //                 ^^^^^^ 6 s's — one per ? placeholder
+
+    if ($stmt->execute()) {
+      header("Location: ?page=login&registered=1");
+      exit;
+    } else {
+      $reg_error = "Employee ID already exists.";
+    }
+  }
 }
 
 // ── Logout ────────────────────────────────────────────────────
@@ -241,6 +275,8 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     exit;
   }
 }
+
+
 
 // ── Inventory CRUD ────────────────────────────────────────────
 if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
@@ -433,17 +469,39 @@ if ($page === "crm") {
     // Member Since handling: accept an optional date input and store into member_since
     $member_since = isset($_POST['member_since']) && $_POST['member_since'] !== '' ? $conn->real_escape_string($_POST['member_since']) : null;
     $member_since_sql = $member_since ? "'" . $member_since . "'" : "NULL";
-    $conn->query("INSERT INTO customers (full_name,contact_info,contact_email,contact_number,photo_url,member_since) VALUES ('$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql)");
+    $creator = $conn->real_escape_string($_SESSION['user_id']);
+    if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin') {
+      // Admin creates an approved customer
+      $now = date('Y-m-d H:i:s');
+      $conn->query("INSERT INTO customers (full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by,approved_by,approved_at) VALUES ('$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 1, '$creator', '$creator', '$now')");
+      $cid = $conn->insert_id;
+      if ($cid) {
+        $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($cid,'created_and_approved','$creator','Created by admin and auto-approved')");
+      }
+    } else {
+      // Cashier creates a pending customer
+      $conn->query("INSERT INTO customers (full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by) VALUES ('$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 0, '$creator')");
+      $cid = $conn->insert_id;
+      if ($cid) {
+        $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($cid,'created_pending','$creator','Created by cashier, pending admin approval')");
+      }
+    }
     header("Location: ?page=crm");
     exit;
   }
-  if (isset($_POST["delete_customer"])) {
+  if (isset($_POST["delete_customer"]) && isset($_SESSION['user_role']) && ($_SESSION['user_role'] === 'Admin' || $_SESSION['user_role'] === 'Cashier')) {
     $id = (int)(isset($_POST["customer_id"]) ? $_POST["customer_id"] : 0);
+
+    // Clean up approval history associated with this customer first to avoid relational conflicts
+    $conn->query("DELETE FROM customer_approval_history WHERE customer_id=$id");
+
+    // Wipe customer permanently from database
     $conn->query("DELETE FROM customers WHERE customer_id=$id");
+
     header("Location: ?page=crm");
     exit;
   }
-  if (isset($_POST["update_customer"])) {
+  if (isset($_POST["update_customer"]) && isset($_SESSION['user_role']) && ($_SESSION['user_role'] === 'Admin' || $_SESSION['user_role'] === 'Cashier')) {
     $id = (int)(isset($_POST["customer_id"])  ? $_POST["customer_id"]  : 0);
     $n_raw = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : '';
     $nameCheck = validateStaffName($n_raw);
@@ -489,7 +547,29 @@ if ($page === "crm") {
     header("Location: ?page=crm");
     exit;
   }
+  // Approve a pending customer (Admin only)
+  if (isset($_POST["approve_customer"]) && isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin') {
+    $id = (int)(isset($_POST["customer_id"]) ? $_POST["customer_id"] : 0);
+    $admin = $conn->real_escape_string($_SESSION['user_id']);
+    $now = date('Y-m-d H:i:s');
+    $conn->query("UPDATE customers SET approved=1, approved_by='$admin', approved_at='$now', rejection_reason=NULL WHERE customer_id=$id");
+    $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($id,'approved','$admin','Approved by admin')");
+    header("Location: ?page=crm");
+    exit;
+  }
+  // Reject a pending customer (Admin only)
+  if (isset($_POST["reject_customer"]) && isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin') {
+    $id = (int)(isset($_POST["customer_id"]) ? $_POST["customer_id"] : 0);
+    $reason = $conn->real_escape_string(isset($_POST['rejection_reason']) ? $_POST['rejection_reason'] : 'Rejected by admin');
+    $admin = $conn->real_escape_string($_SESSION['user_id']);
+    $now = date('Y-m-d H:i:s');
+    $conn->query("UPDATE customers SET approved=2, approved_by='$admin', approved_at='$now', rejection_reason='$reason' WHERE customer_id=$id");
+    $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($id,'rejected','$admin','" . $reason . "')");
+    header("Location: ?page=crm");
+    exit;
+  }
 }
+
 
 // ── Employees ─────────────────────────────────────────────────
 if ($page === "employees" && $_SESSION["user_role"] === "Admin") {
@@ -547,11 +627,32 @@ $inventoryRef = &$inventory;
 $active_promos_res = $conn->query("SELECT * FROM discounts WHERE status=1");
 $active_promos     = $active_promos_res ? $active_promos_res->fetch_all(MYSQLI_ASSOC) : [];
 
-$customers_res = $conn->query("SELECT * FROM customers ORDER BY full_name");
+// Approved customers (for checkout selection)
+$customers_res = $conn->query("SELECT * FROM customers WHERE approved=1 ORDER BY full_name");
 $customers     = $customers_res ? $customers_res->fetch_all(MYSQLI_ASSOC) : [];
+// All customers (for admin CRM view, includes pending)
+$customers_all_res = $conn->query("SELECT * FROM customers ORDER BY full_name");
+$customers_all     = $customers_all_res ? $customers_all_res->fetch_all(MYSQLI_ASSOC) : [];
 
 $employees_res = $conn->query("SELECT * FROM employees ORDER BY role DESC, full_name");
 $employees     = $employees_res ? $employees_res->fetch_all(MYSQLI_ASSOC) : [];
+
+// Build employee id => name map for quick lookup
+$empMap = [];
+foreach ($employees as $e) {
+  $empMap[$e['employee_id']] = $e['full_name'];
+}
+
+// Fetch approval history and map by customer_id
+$historyMap = [];
+$hist_res = $conn->query("SELECT * FROM customer_approval_history ORDER BY ts DESC");
+if ($hist_res) {
+  while ($h = $hist_res->fetch_assoc()) {
+    $cid = $h['customer_id'];
+    if (!isset($historyMap[$cid])) $historyMap[$cid] = [];
+    $historyMap[$cid][] = $h;
+  }
+}
 
 $date_today      = date("Y-m-d");
 $daily_rev       = 0;
@@ -1019,6 +1120,12 @@ function factorial(int $n): int
       vertical-align: middle;
     }
 
+    th:last-child,
+    td:last-child {
+      padding-left: 24px;
+      padding-right: 24px;
+    }
+
     tr:last-child td {
       border-bottom: none;
     }
@@ -1185,8 +1292,10 @@ function factorial(int $n): int
     }
 
     .btn-sm {
-      padding: 6px 13px;
+      padding: 7px 15px;
       font-size: 13px;
+      min-height: 36px;
+      white-space: nowrap;
     }
 
     .btn-lg {
@@ -1305,15 +1414,16 @@ function factorial(int $n): int
     }
 
     #myProfileModal {
-  width: 100vw !important;
-  height: 100vh !important;
-  left: 0 !important;
-  top: 0 !important;
-}
-#myProfileModal .modal-box {
-  max-width: 900px !important;
-  width: min(900px, 92vw) !important;
-}
+      width: 100vw !important;
+      height: 100vh !important;
+      left: 0 !important;
+      top: 0 !important;
+    }
+
+    #myProfileModal .modal-box {
+      max-width: 900px !important;
+      width: min(900px, 92vw) !important;
+    }
 
 
     /* ── Auth ── */
@@ -1614,10 +1724,12 @@ function factorial(int $n): int
     }
 
     .co-actions {
-      padding: 25px 24px 24px; /* Increases spacing around the borders */
+      padding: 25px 24px 24px;
+      /* Increases spacing around the borders */
       display: flex;
       flex-direction: column;
-      gap: 20px;               /* Adds more breathing space between each button */
+      gap: 20px;
+      /* Adds more breathing space between each button */
     }
 
     /* ── Receipt ── */
@@ -1800,7 +1912,7 @@ function factorial(int $n): int
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,.45);
+      background: rgba(0, 0, 0, .45);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1812,7 +1924,7 @@ function factorial(int $n): int
       background: white;
       border-radius: 18px;
       padding: 24px;
-      box-shadow: 0 15px 40px rgba(0,0,0,.2);
+      box-shadow: 0 15px 40px rgba(0, 0, 0, .2);
     }
 
     .modal-input {
@@ -2128,13 +2240,15 @@ function factorial(int $n): int
       </div>
     </div>
 
+
+
   <?php elseif ($page === 'register'): ?>
     <div class="auth-wrap">
       <div class="auth-box" style="width:420px;">
         <div class="auth-logo">Bloom POS</div>
         <div class="auth-sub">Register Staff Account</div>
         <?php if ($reg_error !== ''): ?><div class="auth-err"><?= htmlspecialchars($reg_error, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
-          <form method="POST" action="?page=register" enctype="multipart/form-data">
+        <form method="POST" action="?page=register" enctype="multipart/form-data">
           <div class="form-row">
             <div class="form-group"><label>Employee ID</label><input type="text" name="emp_id" placeholder="EMP-003" required></div>
             <div class="form-group"><label>Role</label>
@@ -2147,8 +2261,8 @@ function factorial(int $n): int
           <div class="form-group"><label>Full Name</label><input type="text" name="full_name" placeholder="Full Name" required></div>
           <div class="form-group"><label>Passcode</label><input type="password" name="passcode" placeholder="Choose a passcode" required></div>
           <div class="form-group">
-          <label>Profile Photo <span style="color:var(--text-3); font-weight:400; text-transform:none;">(optional)</span></label>
-          <input type="file" name="emp_photo" accept="image/*" style="padding:6px;">
+            <label>Profile Photo <span style="color:var(--text-3); font-weight:400; text-transform:none;">(optional)</span></label>
+            <input type="file" name="emp_photo" accept="image/*" style="padding:6px;">
           </div>
           <button type="submit" class="btn btn-primary btn-full btn-lg" style="margin-top:8px;">Create Account</button>
         </form>
@@ -2350,7 +2464,7 @@ function factorial(int $n): int
     <script>
       const TAX_RATE = 0.12;
       let cart = [];
-      const STORE_INFO = <?= json_encode($store_info, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>;
+      const STORE_INFO = <?= json_encode($store_info, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       const allProducts = <?= json_encode($inventory) ?>;
 
       function addToCart(p) {
@@ -2530,7 +2644,9 @@ function factorial(int $n): int
         w.document.write(`<!doctype html><html><head><title>Receipt</title><style>${css}</style></head><body>` + receiptEl.outerHTML + footerHtml + `</body></html>`);
         w.document.close();
         w.focus();
-        w.onafterprint = function() { w.close(); };
+        w.onafterprint = function() {
+          w.close();
+        };
         try {
           w.print();
         } catch (err) {
@@ -2540,7 +2656,7 @@ function factorial(int $n): int
 
       const saleForm = document.getElementById('sale_form');
       if (saleForm) {
-        saleForm.addEventListener('submit', function () {
+        saleForm.addEventListener('submit', function() {
           updateReceipt();
           printReceiptAuto();
         });
@@ -2657,12 +2773,20 @@ function factorial(int $n): int
               w.document.write(`<!doctype html><html><head><title>Receipt</title><style>${css}</style></head><body>` + receiptEl.outerHTML + footerHtml + `</body></html>`);
               w.document.close();
               w.focus();
-              w.onafterprint = function() { w.close(); };
-              setTimeout(function() { w.print(); }, 250);
-              setTimeout(function() { if (!w.closed) w.close(); }, 8000);
+              w.onafterprint = function() {
+                w.close();
+              };
+              setTimeout(function() {
+                w.print();
+              }, 250);
+              setTimeout(function() {
+                if (!w.closed) w.close();
+              }, 8000);
             }
           }
-        } catch (err) { console.error('Print preview error', err); }
+        } catch (err) {
+          console.error('Print preview error', err);
+        }
       });
     </script>
 
@@ -2708,19 +2832,21 @@ function factorial(int $n): int
               </svg>
               Inventory
             </a>
+          <?php endif; ?>
 
-            <div class="sb-section" style="margin-top:8px;">Management</div>
+          <div class="sb-section" style="margin-top:8px;">Management</div>
 
-            <a href="?page=crm" class="sb-link <?= $page === 'crm' ? 'active' : '' ?>">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-              Customers
-            </a>
+          <a href="?page=crm" class="sb-link <?= $page === 'crm' ? 'active' : '' ?>">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            Customers
+          </a>
 
+          <?php if ($is_admin): ?>
             <a href="?page=employees" class="sb-link <?= $page === 'employees' ? 'active' : '' ?>">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -2746,7 +2872,7 @@ function factorial(int $n): int
             <div class="sb-avatar" onclick="document.getElementById('myProfileModal').classList.add('open')" style="cursor:pointer;" title="Edit my profile">
               <?php if (!empty($user_photo)): ?>
                 <img src="<?= htmlspecialchars($user_photo, ENT_QUOTES, 'UTF-8') ?>"
-                     alt="<?= htmlspecialchars($_SESSION['user_name'], ENT_QUOTES, 'UTF-8') ?>">
+                  alt="<?= htmlspecialchars($_SESSION['user_name'], ENT_QUOTES, 'UTF-8') ?>">
               <?php else: ?>
                 <?= $initials ?>
               <?php endif; ?>
@@ -2760,11 +2886,11 @@ function factorial(int $n): int
         </div>
         <!-- ══ MY PROFILE MODAL ══ -->
         <div class="overlay" id="myProfileModal">
-        <div class="modal-box profile">
-          <div class="modal-header">
-            <span class="modal-title">My Profile</span>
-            <button class="modal-close" onclick="document.getElementById('myProfileModal').classList.remove('open')">&times;</button>
-          </div>
+          <div class="modal-box profile">
+            <div class="modal-header">
+              <span class="modal-title">My Profile</span>
+              <button class="modal-close" onclick="document.getElementById('myProfileModal').classList.remove('open')">&times;</button>
+            </div>
 
             <div style="display:flex; align-items:center; gap:16px; margin-bottom:22px; padding:16px; background:var(--oatmeal); border:1px solid var(--taupe-l); border-radius:var(--radius-lg);">
               <div style="width:64px; height:64px; border-radius:50%; background:linear-gradient(135deg, var(--chestnut-l), var(--chestnut-d)); color:#fff; font-weight:700; font-size:20px; display:flex; align-items:center; justify-content:center; overflow:hidden; box-shadow:0 2px 8px rgba(56,46,40,.3); flex-shrink:0;">
@@ -2830,10 +2956,10 @@ function factorial(int $n): int
           </div>
         </div>
         <script>
-          (function(){
+          (function() {
             var _mpm = document.getElementById('myProfileModal');
             if (_mpm) {
-              _mpm.addEventListener('click', function(e){
+              _mpm.addEventListener('click', function(e) {
                 if (e.target === _mpm) _mpm.classList.remove('open');
               });
             }
@@ -3189,7 +3315,7 @@ function factorial(int $n): int
               document.getElementById('productModal').classList.add('open');
             }
 
-            const inventoryItems = <?= json_encode($inventory, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>;
+            const inventoryItems = <?= json_encode($inventory, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
             function openEditModal(data, title = 'Edit Product') {
               document.getElementById('prod_modal_title').textContent = title;
@@ -3262,7 +3388,80 @@ function factorial(int $n): int
             document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
               if (e.target === o) o.classList.remove('open');
             }));
+            // Confirm rejection prompt fills hidden reason field
+            function confirmReject(form) {
+              try {
+                var reason = prompt('Enter rejection reason (optional):');
+                if (reason === null) return false; // cancelled
+                var inp = form.querySelector('.rej_reason');
+                if (inp) inp.value = reason;
+                return true;
+              } catch (e) {
+                return true;
+              }
+            }
+
+            // Approval history data injected from server
+            const CUST_HISTORY = <?= json_encode($historyMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?> || {};
+
+            function openHistory(cid) {
+              const modal = document.getElementById('historyModal');
+              const container = document.getElementById('historyContent');
+              container.innerHTML = '';
+              const items = CUST_HISTORY[cid] || [];
+              if (items.length === 0) {
+                container.innerHTML = '<div style="padding:12px; color:var(--text-3);">No history available.</div>';
+              } else {
+                items.forEach(it => {
+                  const t = document.createElement('div');
+                  t.style.padding = '10px 0';
+                  t.style.borderBottom = '1px solid #eee';
+                  t.innerHTML = `<div style="font-weight:700;">${escapeHtml(it.action)}</div><div style="font-size:12px; color:var(--text-3);">${escapeHtml(it.note || '')}</div><div style="font-size:12px; color:var(--text-3); margin-top:6px;">By: ${escapeHtml(it.by_employee_id || '')} &middot; ${escapeHtml(it.ts || '')}</div>`;
+                  container.appendChild(t);
+                });
+              }
+              modal.classList.add('open');
+            }
+
+            function escapeHtml(s) {
+              return String(s).replace(/[&<>\"']/g, function(m) {
+                return {
+                  '&': '&amp;',
+                  '<': '&lt;',
+                  '>': '&gt;',
+                  '"': '&quot;',
+                  "'": '&#39;'
+                } [m];
+              });
+            }
           </script>
+
+          <script>
+            // Client-side search for CRM table
+            (function() {
+              var inp = document.getElementById('cust_search');
+              if (!inp) return;
+              inp.addEventListener('input', function() {
+                var q = this.value.trim().toLowerCase();
+                document.querySelectorAll('table tbody tr[data-cust-id]').forEach(function(row) {
+                  if (!q) {
+                    row.style.display = '';
+                    return;
+                  }
+                  var txt = row.innerText.toLowerCase();
+                  row.style.display = txt.indexOf(q) !== -1 ? '' : 'none';
+                });
+              });
+            })();
+          </script>
+
+          <!-- History Modal -->
+          <div class="overlay" id="historyModal">
+            <div class="modal-box" style="max-width:600px;">
+              <div class="modal-header"><span class="modal-title">Customer Approval History</span><button class="modal-close" onclick="document.getElementById('historyModal').classList.remove('open')">&times;</button></div>
+              <div id="historyContent" style="padding:12px; max-height:400px; overflow:auto;"></div>
+            </div>
+          </div>
 
         <?php
         // ── CRM ──────────────────────────────────────────────────────
@@ -3271,7 +3470,7 @@ function factorial(int $n): int
             <div class="page-header">
               <div>
                 <div class="page-title">Customers</div>
-                <div class="page-sub"><?= count($customers) ?> registered customers</div>
+                <div class="page-sub"><?= count($customers_all) ?> registered customers</div>
               </div>
               <button onclick="document.getElementById('addCustModal').classList.add('open')" class="btn btn-primary">+ Add Customer</button>
             </div>
@@ -3280,6 +3479,10 @@ function factorial(int $n): int
             <?php unset($_SESSION['crm_error']);
             endif; ?>
             <div class="card">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <div style="font-size:13px; color:var(--text-2);">Customer records</div>
+                <div><input type="text" id="cust_search" placeholder="Search customers..." style="padding:8px 10px; border:1px solid var(--taupe); border-radius:8px; font-size:13px;"></div>
+              </div>
               <div class="tbl-wrap">
                 <table>
                   <thead>
@@ -3293,14 +3496,14 @@ function factorial(int $n): int
                     </tr>
                   </thead>
                   <tbody>
-                    <?php if (empty($customers)): ?>
+                    <?php if (empty($customers_all)): ?>
                       <tr>
                         <td colspan="6" style="text-align:center; color:var(--text-3); padding:32px;">No customers yet.</td>
                       </tr>
-                      <?php else: foreach ($customers as $c):
+                      <?php else: foreach ($customers_all as $c):
                         $av = strtoupper(substr($c['full_name'], 0, 1));
                       ?>
-                        <tr>
+                        <tr data-cust-id="<?= $c['customer_id'] ?>">
                           <td>
                             <div class="customer-row">
                               <div class="cust-avatar">
@@ -3313,6 +3516,18 @@ function factorial(int $n): int
                               </div>
                               <div style="font-size:14px; font-weight:600; color:var(--espresso);">
                                 <?= htmlspecialchars($c['full_name'], ENT_QUOTES, 'UTF-8') ?>
+                                <?php if (isset($c['approved']) && $c['approved'] == 0): ?> <span class="badge badge-amber" style="margin-left:8px; font-size:11px;">To be approved</span><?php endif; ?>
+                              </div>
+                              <div style="font-size:12px; color:var(--text-3); margin-top:6px;">
+                                <?php if (!empty($c['created_by']) && isset($empMap[$c['created_by']])): ?>Added by: <?= htmlspecialchars($empMap[$c['created_by']], ENT_QUOTES, 'UTF-8') ?><?php else: ?>Added by: System<?php endif; ?>
+                                <?php if (!empty($c['approved_by']) && isset($empMap[$c['approved_by']])): ?>
+                                  &middot;
+                                  <?php if (isset($c['approved']) && $c['approved'] == 2): ?>
+                                    <span style="color: #dc3545; font-weight: 600;">Rejected by: <?= htmlspecialchars($empMap[$c['approved_by']], ENT_QUOTES, 'UTF-8') ?></span>
+                                  <?php else: ?>
+                                    Approved by: <?= htmlspecialchars($empMap[$c['approved_by']], ENT_QUOTES, 'UTF-8') ?>
+                                  <?php endif; ?>
+                                <?php endif; ?>
                               </div>
                             </div>
                           </td>
@@ -3322,12 +3537,26 @@ function factorial(int $n): int
                           <td><span class="badge badge-brown"><?= number_format($c['loyalty_points']) ?> pts</span></td>
                           <td style="color:var(--text-3); font-size:12px;"><?= !empty($c['member_since']) ? date('d M Y', strtotime($c['member_since'])) : '&#8212;' ?></td>
                           <td>
-                            <div style="display:flex; gap:6px;">
+                            <div style="display: flex; gap: 12px; row-gap: 10px; align-items: center; flex-wrap: wrap;">
                               <button onclick='openEditCust(<?= json_encode($c) ?>)' class="btn btn-sm btn-secondary">Edit</button>
-                              <form method="POST" action="?page=crm" onsubmit="return confirm('Delete this customer?');" style="margin:0;">
-                                <input type="hidden" name="customer_id" value="<?= $c['customer_id'] ?>">
-                                <button type="submit" name="delete_customer" class="btn btn-sm btn-danger">Delete</button>
-                              </form>
+                              <?php if ($is_admin): ?>
+                                <?php if (isset($c['approved']) && $c['approved'] == 0): ?>
+                                  <form method="POST" action="?page=crm" style="margin: 0;">
+                                    <input type="hidden" name="customer_id" value="<?= $c['customer_id'] ?>">
+                                    <button type="submit" name="approve_customer" class="btn btn-sm btn-primary">Approve</button>
+                                  </form>
+                                  <form method="POST" action="?page=crm" style="margin: 0;" onsubmit="return confirmReject(this);">
+                                    <input type="hidden" name="customer_id" value="<?= $c['customer_id'] ?>">
+                                    <input type="hidden" name="rejection_reason" value="" class="rej_reason">
+                                    <button type="submit" name="reject_customer" class="btn btn-sm btn-ghost" style="color: var(--red); border: 1px solid rgba(168, 50, 50, .12);">Reject</button>
+                                  </form>
+                                <?php endif; ?>
+                                <form method="POST" action="?page=crm" onsubmit="return confirm('Are you sure you want to 100% delete this customer and all logs permanently from the database?');" style="margin: 0;">
+                                  <input type="hidden" name="customer_id" value="<?= $c['customer_id'] ?>">
+                                  <button type="submit" name="delete_customer" class="btn btn-sm btn-danger">Delete</button>
+                                </form>
+                              <?php endif; ?>
+                              <button type="button" onclick="openHistory(<?= $c['customer_id'] ?>)" class="btn btn-sm btn-secondary">History</button>
                             </div>
                           </td>
                         </tr>
@@ -3377,6 +3606,7 @@ function factorial(int $n): int
               </form>
             </div>
           </div>
+
           <script>
             function openEditCust(c) {
               document.getElementById('edit_cust_id').value = c.customer_id;
@@ -3385,7 +3615,9 @@ function factorial(int $n): int
               document.getElementById('edit_cust_number').value = c.contact_number || '';
               try {
                 document.getElementById('edit_cust_member_since').value = c.member_since ? c.member_since.split(' ')[0] : '';
-              } catch (e) { document.getElementById('edit_cust_member_since').value = ''; }
+              } catch (e) {
+                document.getElementById('edit_cust_member_since').value = '';
+              }
               document.getElementById('editCustModal').classList.add('open');
             }
             document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
