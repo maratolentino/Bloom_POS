@@ -2545,7 +2545,7 @@ function factorial(int $n): int
                 </div>
               </div>
               <div id="cash_area" class="form-group">
-                <label>Amount Tendered</label>
+                <label>Amount Received</label>
                 <input type="text" name="amount_tendered" id="amount_tendered" placeholder="0.00" oninput="fmtCash(this); calcChange();">
               </div>
               <div style="background:var(--taupe-l); border-radius:var(--radius); padding:14px 16px; margin-bottom:16px; border:1px solid var(--taupe);">
@@ -2757,7 +2757,26 @@ function factorial(int $n): int
 
       const saleForm = document.getElementById('sale_form');
       if (saleForm) {
-        saleForm.addEventListener('submit', function() {
+        const tenderedFieldRef = document.getElementById('amount_tendered');
+        if (tenderedFieldRef) {
+          tenderedFieldRef.addEventListener('input', function() {
+            this.setCustomValidity('');
+          });
+        }
+        saleForm.addEventListener('submit', function(e) {
+          const pm = document.querySelector('input[name="payment_method"]:checked');
+          if (pm && pm.value === 'Cash') {
+            const tenderedField = document.getElementById('amount_tendered');
+            const tenderedVal = parseFloat((tenderedField.value || '0').replace(/,/g, '')) || 0;
+            if (tenderedVal <= 0) {
+              e.preventDefault();
+              tenderedField.setCustomValidity('Please enter the Amount Received');
+              tenderedField.reportValidity();
+              tenderedField.focus();
+              return;
+            }
+            tenderedField.setCustomValidity('');
+          }
           updateReceipt();
           printReceiptAuto();
         });
