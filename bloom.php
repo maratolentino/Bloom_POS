@@ -1422,6 +1422,37 @@ function factorial(int $n): int
       border-color: #E0B0B0;
     }
 
+    .dialog-message {
+      color: var(--text-2);
+      font-size: 14px;
+      margin-top: 8px;
+      line-height: 1.65;
+    }
+
+    .dialog-input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid rgba(161, 148, 141, .35);
+      border-radius: 14px;
+      font-size: 14px;
+      margin-top: 16px;
+      box-sizing: border-box;
+      outline: none;
+    }
+
+    .dialog-input:focus {
+      border-color: var(--chestnut);
+      box-shadow: 0 0 0 3px rgba(226, 175, 154, .18);
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+    }
+
     #myProfileModal {
       width: 100vw !important;
       height: 100vh !important;
@@ -2580,10 +2611,13 @@ function factorial(int $n): int
       }
 
       function voidCart() {
-        if (cart.length && confirm('Clear current basket?')) {
-          cart = [];
-          renderCart();
-        }
+        if (!cart.length) return;
+        showConfirm('Clear current basket?').then(function(ok) {
+          if (ok) {
+            cart = [];
+            renderCart();
+          }
+        });
       }
 
       function holdSale() {
@@ -2836,6 +2870,20 @@ function factorial(int $n): int
     $is_admin   = $_SESSION['user_role'] === 'Admin';
   ?>
     <div class="app">
+      <div class="overlay" id="confirmDialogModal">
+        <div class="modal-box" style="max-width:420px;">
+          <div class="modal-header">
+            <span class="modal-title" id="confirmDialogTitle">Confirm action</span>
+            <button class="modal-close" type="button" onclick="closeDialogModal()">&times;</button>
+          </div>
+          <div id="confirmDialogMessage" class="dialog-message">Are you sure?</div>
+          <input type="text" id="confirmDialogInput" class="dialog-input" style="display:none;" autocomplete="off" />
+          <div class="dialog-actions">
+            <button type="button" class="btn btn-secondary" id="confirmDialogCancel">Cancel</button>
+            <button type="button" class="btn btn-primary" id="confirmDialogConfirm">OK</button>
+          </div>
+        </div>
+      </div>
       <nav class="sidebar">
         <div class="sb-brand">
           <div class="sb-brand-name">Bloom POS</div>
@@ -3108,7 +3156,7 @@ function factorial(int $n): int
                     $hasDisc = $ep < $item['price'];
                   ?>
                     <div class="inv-card" onclick="openEditModal(<?= htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8') ?>)">
-                      <form method="POST" action="?page=inventory&tab=items" onsubmit="return confirm('Delete this product?');" style="position:absolute; top:8px; right:8px; z-index:2;">
+                      <form data-confirm="Delete this product?" method="POST" action="?page=inventory&tab=items" style="position:absolute; top:8px; right:8px; z-index:2;">
                         <input type="hidden" name="delete_sku" value="<?= $item['sku'] ?>">
                         <button type="submit" class="inv-del-btn" onclick="event.stopPropagation();" title="Delete">&times;</button>
                       </form>
@@ -3177,7 +3225,7 @@ function factorial(int $n): int
                               <div style="font-size:13px; font-weight:600; color:var(--espresso);"><?= htmlspecialchars($ci['product_name'], ENT_QUOTES, 'UTF-8') ?></div>
                               <div style="font-size:10px; color:var(--text-3); font-family:monospace;"><?= $ci['sku'] ?></div>
                             </div>
-                            <form method="POST" action="?page=inventory&tab=categories" style="margin:0;" onsubmit="return confirm('Remove from category?');">
+                            <form data-confirm="Remove from category?" method="POST" action="?page=inventory&tab=categories" style="margin:0;">
                               <input type="hidden" name="unlink_sku" value="<?= $ci['sku'] ?>">
                               <button type="submit" class="btn btn-sm btn-ghost" style="color:var(--red);">&times;</button>
                             </form>
@@ -3244,7 +3292,7 @@ function factorial(int $n): int
                             <input type="hidden" name="current_status" value="<?= $d['status'] ?>">
                             <button type="submit" name="toggle_discount_status" class="btn btn-sm <?= $is_active ? 'btn-danger' : 'btn-secondary' ?>"><?= $is_active ? 'Disable' : 'Enable' ?></button>
                           </form>
-                          <form method="POST" action="?page=inventory&tab=discounts" onsubmit="return confirm('Delete this promotion?');">
+                          <form data-confirm="Delete this promotion?" method="POST" action="?page=inventory&tab=discounts">
                             <input type="hidden" name="delete_discount_id" value="<?= $d['discount_id'] ?>">
                             <button type="submit" name="delete_discount" class="btn btn-sm btn-danger">Delete</button>
                           </form>
@@ -3370,7 +3418,7 @@ function factorial(int $n): int
                 <div class="form-group"><label>Category Name</label><input type="text" name="category_name" id="edit_cat_name" required></div>
                 <div style="display:flex; gap:8px;">
                   <button type="submit" name="update_category" class="btn btn-primary btn-full">Update</button>
-                  <button type="submit" name="delete_category" class="btn btn-danger btn-full" onclick="return confirm('Delete this category?')">Delete</button>
+                  <button type="submit" name="delete_category" class="btn btn-danger btn-full" data-confirm="Delete this category?">Delete</button>
                 </div>
               </form>
             </div>
@@ -3480,18 +3528,132 @@ function factorial(int $n): int
             document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
               if (e.target === o) o.classList.remove('open');
             }));
-            // Confirm rejection prompt fills hidden reason field
-            function confirmReject(form) {
-              try {
-                var reason = prompt('Enter rejection reason (optional):');
-                if (reason === null) return false; // cancelled
-                var inp = form.querySelector('.rej_reason');
-                if (inp) inp.value = reason;
-                return true;
-              } catch (e) {
-                return true;
+
+            const confirmDialogModal = document.getElementById('confirmDialogModal');
+            const confirmDialogTitle = document.getElementById('confirmDialogTitle');
+            const confirmDialogMessage = document.getElementById('confirmDialogMessage');
+            const confirmDialogInput = document.getElementById('confirmDialogInput');
+            const confirmDialogConfirm = document.getElementById('confirmDialogConfirm');
+            const confirmDialogCancel = document.getElementById('confirmDialogCancel');
+            let confirmDialogResolver = null;
+
+            function openDialog(options) {
+              confirmDialogTitle.textContent = options.title || 'Confirm action';
+              confirmDialogMessage.textContent = options.message || '';
+              confirmDialogConfirm.textContent = options.confirmText || 'OK';
+              confirmDialogCancel.textContent = options.cancelText || 'Cancel';
+              if (options.prompt) {
+                confirmDialogInput.style.display = 'block';
+                confirmDialogInput.value = options.defaultValue || '';
+                confirmDialogInput.placeholder = options.placeholder || '';
+                setTimeout(() => confirmDialogInput.focus(), 50);
+              } else {
+                confirmDialogInput.style.display = 'none';
+              }
+              confirmDialogModal.classList.add('open');
+              return new Promise(resolve => {
+                confirmDialogResolver = resolve;
+              });
+            }
+
+            function closeDialogModal() {
+              confirmDialogModal.classList.remove('open');
+              if (confirmDialogResolver) {
+                confirmDialogResolver(null);
+                confirmDialogResolver = null;
               }
             }
+
+            function showConfirm(message, title, confirmText, cancelText) {
+              return openDialog({
+                title: title || 'Confirm action',
+                message: message,
+                confirmText: confirmText || 'OK',
+                cancelText: cancelText || 'Cancel',
+                prompt: false
+              });
+            }
+
+            function showPrompt(message, placeholder, title, confirmText, cancelText) {
+              return openDialog({
+                title: title || 'Enter details',
+                message: message,
+                prompt: true,
+                placeholder: placeholder || '',
+                confirmText: confirmText || 'OK',
+                cancelText: cancelText || 'Cancel'
+              });
+            }
+
+            confirmDialogConfirm.addEventListener('click', () => {
+              if (!confirmDialogResolver) return;
+              const value = confirmDialogInput.style.display !== 'none' ? confirmDialogInput.value : true;
+              confirmDialogModal.classList.remove('open');
+              confirmDialogResolver(value);
+              confirmDialogResolver = null;
+            });
+
+            confirmDialogCancel.addEventListener('click', () => {
+              if (!confirmDialogResolver) return;
+              confirmDialogModal.classList.remove('open');
+              confirmDialogResolver(null);
+              confirmDialogResolver = null;
+            });
+
+            confirmDialogModal.addEventListener('click', event => {
+              if (event.target === confirmDialogModal) {
+                if (!confirmDialogResolver) return;
+                confirmDialogModal.classList.remove('open');
+                confirmDialogResolver(null);
+                confirmDialogResolver = null;
+              }
+            });
+
+            confirmDialogInput.addEventListener('keydown', event => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                confirmDialogConfirm.click();
+              }
+            });
+
+            document.addEventListener('submit', function(event) {
+              const form = event.target;
+              if (!(form instanceof HTMLFormElement)) return;
+              const promptMessage = form.dataset.prompt;
+              const confirmMessage = form.dataset.confirm;
+              if (promptMessage) {
+                event.preventDefault();
+                showPrompt(promptMessage).then(value => {
+                  if (value === null) return;
+                  const target = form.querySelector(form.dataset.promptTarget || '.rej_reason');
+                  if (target) target.value = value;
+                  form.submit();
+                });
+                return;
+              }
+              if (confirmMessage) {
+                event.preventDefault();
+                showConfirm(confirmMessage).then(ok => {
+                  if (ok) form.submit();
+                });
+              }
+            });
+
+            document.addEventListener('click', function(event) {
+              const trigger = event.target.closest('[data-confirm]');
+              if (!trigger) return;
+              if (trigger instanceof HTMLButtonElement || trigger instanceof HTMLAnchorElement) {
+                const confirmMessage = trigger.dataset.confirm;
+                if (!confirmMessage) return;
+                event.preventDefault();
+                showConfirm(confirmMessage).then(ok => {
+                  if (!ok) return;
+                  const form = trigger.closest('form');
+                  if (form) form.submit();
+                  else if (trigger instanceof HTMLAnchorElement && trigger.href) window.location.href = trigger.href;
+                });
+              }
+            });
 
             // Approval history data injected from server
             const CUST_HISTORY = <?= json_encode($historyMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?> || {};
@@ -3637,13 +3799,13 @@ function factorial(int $n): int
                                     <input type="hidden" name="customer_id" value="<?= $c['customer_id'] ?>">
                                     <button type="submit" name="approve_customer" class="btn btn-sm btn-primary">Approve</button>
                                   </form>
-                                  <form method="POST" action="?page=crm" style="margin: 0;" onsubmit="return confirmReject(this);">
+                                  <form data-prompt="Enter rejection reason (optional):" data-prompt-target=".rej_reason" method="POST" action="?page=crm" style="margin: 0;">
                                     <input type="hidden" name="customer_id" value="<?= $c['customer_id'] ?>">
                                     <input type="hidden" name="rejection_reason" value="" class="rej_reason">
                                     <button type="submit" name="reject_customer" class="btn btn-sm btn-ghost" style="color: var(--red); border: 1px solid rgba(168, 50, 50, .12);">Reject</button>
                                   </form>
                                 <?php endif; ?>
-                                <form method="POST" action="?page=crm" onsubmit="return confirm('Are you sure you want to 100% delete this customer and all logs permanently from the database?');" style="margin: 0;">
+                                <form data-confirm="Are you sure you want to 100% delete this customer and all logs permanently from the database?" method="POST" action="?page=crm" style="margin: 0;">
                                   <input type="hidden" name="customer_id" value="<?= $c['customer_id'] ?>">
                                   <button type="submit" name="delete_customer" class="btn btn-sm btn-danger">Delete</button>
                                 </form>
@@ -3757,7 +3919,7 @@ function factorial(int $n): int
                   <button onclick='openEditEmp(<?= json_encode($emp) ?>)' class="btn btn-sm btn-secondary">Edit</button>
                   <button onclick="document.getElementById('reset_emp_id').value='<?= $emp['employee_id'] ?>'; document.getElementById('resetPassModal').classList.add('open');" class="btn btn-sm btn-secondary">Passcode</button>
                   <?php if ($emp['employee_id'] !== $_SESSION['user_id']): ?>
-                    <form method="POST" action="?page=employees" onsubmit="return confirm('Remove this employee?');" style="margin:0;">
+                    <form data-confirm="Remove this employee?" method="POST" action="?page=employees" style="margin:0;">
                       <input type="hidden" name="employee_id" value="<?= $emp['employee_id'] ?>">
                       <button type="submit" name="delete_employee" class="btn btn-sm btn-danger">Remove</button>
                     </form>
