@@ -280,12 +280,26 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
 
 // ── Inventory CRUD ────────────────────────────────────────────
 if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
+  function isValidProductSku(string $sku): bool {
+    return preg_match('/^[A-Za-z]+-\d{3}$/', $sku) === 1;
+  }
+
+  function normalizeProductSku(string $sku): string {
+    return strtoupper(trim($sku));
+  }
+
   if (isset($_POST["add_product"]) || isset($_POST["update_product"])) {
     $is_update  = isset($_POST["update_product"]);
-    $sku        = $conn->real_escape_string(isset($_POST["sku"])          ? $_POST["sku"]          : "");
-    $old_sku    = $conn->real_escape_string(isset($_POST["old_sku"])      ? $_POST["old_sku"]      : $sku);
-    $name       = $conn->real_escape_string(isset($_POST["name"])         ? $_POST["name"]         : "");
-    $price      = floatval(str_replace(",", "", isset($_POST["price"])    ? $_POST["price"]        : "0"));
+    $sku        = normalizeProductSku(isset($_POST["sku"]) ? $_POST["sku"] : "");
+    $old_sku    = normalizeProductSku(isset($_POST["old_sku"]) ? $_POST["old_sku"] : $sku);
+    $name       = $conn->real_escape_string(isset($_POST["name"]) ? $_POST["name"] : "");
+    $price      = floatval(str_replace(",", "", isset($_POST["price"]) ? $_POST["price"] : "0"));
+
+    if (!isValidProductSku($sku)) {
+      $_SESSION['inventory_error'] = 'SKU must follow the format FLOWERNAME-001 and only use letters before the dash.';
+      header('Location: ?page=inventory&tab=items');
+      exit;
+    }
 
     if (!is_float($price)) {
       $price = 0.0;
@@ -358,12 +372,25 @@ if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
 
 // Handle Add Variant Form Submission
   if (isset($_POST["add_variant_submit"])) {
-    $original_sku = $conn->real_escape_string($_POST["original_sku"]);
-    $new_sku      = $conn->real_escape_string($_POST["new_sku"]);
-    $variant_name = $conn->real_escape_string($_POST["variant_name"]);
-    $variant_qty  = (int)$_POST["variant_qty"];
+    $original_sku = normalizeProductSku($_POST["original_sku"] ?? "");
+    $new_sku      = normalizeProductSku($_POST["new_sku"] ?? "");
+    $variant_name = $conn->real_escape_string($_POST["variant_name"] ?? "");
+    $variant_qty  = (int)($_POST["variant_qty"] ?? 0);
 
-    // FIXED: Now calling the accurate function name using the __clone engine
+    if (!isValidProductSku($new_sku) || !isValidProductSku($original_sku)) {
+      $_SESSION['inventory_error'] = 'Variant SKU must follow the format FLOWERNAME-001 and match the base product.';
+      header('Location: ?page=inventory&tab=items');
+      exit;
+    }
+
+    $original_base = explode('-', $original_sku)[0];
+    $variant_base  = explode('-', $new_sku)[0];
+    if ($original_base !== $variant_base) {
+      $_SESSION['inventory_error'] = 'Variant SKU must share the same flower name base as the original product.';
+      header('Location: ?page=inventory&tab=items');
+      exit;
+    }
+
     addVariantWithClone($conn, $original_sku, $new_sku, $variant_name, $variant_qty);
 
     header("Location: ?page=inventory&tab=items");
@@ -3138,6 +3165,12 @@ function factorial(int $n): int
                 <button onclick="openAddModal()" class="btn btn-primary">+ Add Product</button>
               <?php endif; ?>
             </div>
+            <?php if (isset($_SESSION['inventory_error'])): ?>
+              <div class="alert alert-danger" style="margin:0 0 16px;">
+                <?= htmlspecialchars($_SESSION['inventory_error'], ENT_QUOTES, 'UTF-8') ?>
+              </div>
+              <?php unset($_SESSION['inventory_error']); ?>
+            <?php endif; ?>
 
             <div class="tabs">
               <a href="?page=inventory&tab=items" class="tab-link <?= $activeTab === 'items' ? 'active' : '' ?>">Products</a>
@@ -3314,7 +3347,7 @@ function factorial(int $n): int
               </div>
               <form method="POST" action="?page=inventory&tab=items" enctype="multipart/form-data" id="prod_form">
                 <input type="hidden" name="old_sku" id="hidden_sku">
-                <div class="form-group"><label>SKU / ID</label><input type="text" name="sku" id="form_sku" placeholder="ROSE-001" required></div>
+                <div class="form-group"><label>SKU / ID</label><input type="text" name="sku" id="form_sku" placeholder="ROSE-001" pattern="[A-Za-z]+-[0-9]{3}" title="Use FLOWERNAME-001 format" oninput="this.value = this.value.toUpperCase()" required></div>
                 <div class="form-group"><label>Product Name</label><input type="text" name="name" id="form_name" placeholder="Product name" required></div>
                 <div class="form-row">
                   <div class="form-group"><label>Price (&#8369;)</label><input type="text" name="price" id="form_price" oninput="fmtCurr(this)" placeholder="0.00" required></div>
@@ -3357,7 +3390,7 @@ function factorial(int $n): int
                 
                 <div class="form-group">
                   <label>New Variant SKU / ID</label>
-                  <input type="text" name="new_sku" id="variant_new_sku" placeholder="e.g. ROSE-002" required>
+                  <input type="text" name="new_sku" id="variant_new_sku" placeholder="e.g. ROSE-002" pattern="[A-Za-z]+-[0-9]{3}" title="Use FLOWERNAME-001 format" oninput="this.value = this.value.toUpperCase()" required>
                 </div>
                 
                 <div class="form-group">
@@ -3380,14 +3413,29 @@ function factorial(int $n): int
           </div>
 
           <script>
+          function getNextVariantSku(baseSku) {
+              const match = String(baseSku).toUpperCase().match(/^([A-Z]+)-(\d{3})$/);
+              if (!match) return baseSku + '-002';
+              const prefix = match[1];
+              let maxIndex = 0;
+              if (typeof inventoryItems !== 'undefined') {
+                inventoryItems.forEach(item => {
+                  const m = String(item.sku).toUpperCase().match(new RegExp('^' + prefix + '-(\\d{3})$'));
+                  if (m) {
+                    maxIndex = Math.max(maxIndex, parseInt(m[1], 10));
+                  }
+                });
+              }
+              return prefix + '-' + String(maxIndex + 1).padStart(3, '0');
+          }
+
           function openVariantModal(item) {
               document.getElementById('variant_orig_sku').value = item.sku;
               document.getElementById('variant_orig_name').value = item.product_name + ' (' + item.sku + ')';
-              
-              // Suggest placeholder text variations
-              document.getElementById('variant_new_sku').value = item.sku + '-VAR';
+
+              document.getElementById('variant_new_sku').value = getNextVariantSku(item.sku);
               document.getElementById('variant_new_name').value = item.product_name + ' (Variant)';
-              
+
               document.getElementById('addVariantModal').classList.add('open');
           }
           </script>          
