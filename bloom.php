@@ -115,28 +115,36 @@ if (isLoggedIn() && $_SESSION["user_role"] !== "Admin" && in_array($page, $restr
 if ($page === "login" && $_SERVER["REQUEST_METHOD"] === "POST") {
   $emp_id   = isset($_POST["emp_id"])   ? trim($_POST["emp_id"])  : ""; //trim() to remove extra whitespace from employee ID input
   $passcode = isset($_POST["passcode"]) ? $_POST["passcode"]      : "";
-  // ── UPDATED: also fetch photo_url ──
-  $stmt = $conn->prepare("SELECT employee_id, full_name, role, passcode, photo_url FROM employees WHERE employee_id = ?");
-  $stmt->bind_param("s", $emp_id);
-  $stmt->execute();
-  $row = $stmt->get_result()->fetch_assoc();
-  if ($row && strcmp($row["passcode"], $passcode) === 0) {  // strcmp() for exact string comparison of passcodes
-    // Initialize session on successful login
-    initializeSession(
-      $row["employee_id"],
-      $row["full_name"],
-      $row["role"],
-      isset($row["photo_url"]) ? $row["photo_url"] : ""
-    );
-    header("Location: ?page=dashboard");
-    exit;
+
+  // Validate employee ID format: must be EMP-### where ### is 001-999
+  if (!preg_match('/^EMP-(\d{3})$/', strtoupper($emp_id), $m) || (int)$m[1] < 1 || (int)$m[1] > 999) {
+    $auth_error = "Employee ID must follow the format EMP-001 through EMP-999.";
+  } else {
+    // fetch account
+    $stmt = $conn->prepare("SELECT employee_id, full_name, role, passcode, photo_url FROM employees WHERE employee_id = ?");
+    $emp_id_up = strtoupper($emp_id);
+    $stmt->bind_param("s", $emp_id_up);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if ($row && strcmp($row["passcode"], $passcode) === 0) {  // strcmp() for exact string comparison of passcodes
+      // Initialize session on successful login
+      initializeSession(
+        $row["employee_id"],
+        $row["full_name"],
+        $row["role"],
+        isset($row["photo_url"]) ? $row["photo_url"] : ""
+      );
+      header("Location: ?page=dashboard");
+      exit;
+    }
+    $auth_error = "Invalid Employee ID or passcode.";
   }
+
   if (isset($_POST['remember_me'])) {
     setcookie('bloom_remember_id', $emp_id, time() + (30 * 24 * 60 * 60), '/'); // 30 days
   } else {
     setcookie('bloom_remember_id', '', time() - 3600, '/'); // delete it
   }
-  $auth_error = "Invalid Employee ID or passcode.";
 }
 
 // ── Register ──────────────────────────────────────────────────
@@ -151,9 +159,24 @@ if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST") {
   $nameCheck = validateStaffName($name);
   if (!is_bool($nameCheck) || $nameCheck !== true) {
     $reg_error = is_bool($nameCheck) ? "Invalid name." : $nameCheck;
-  } elseif (!preg_match("/^[a-zA-Z0-9-]+$/", $emp_id)) { //preg_match() to validate employee ID format (only letters, numbers, hyphens)
-    $reg_error = "Employee ID may only contain letters, numbers, and hyphens.";
   } else {
+    // Strict employee ID format: EMP-### with range 001-999
+    $emp_id_up = strtoupper($emp_id);
+    if (!preg_match('/^EMP-(\d{3})$/', $emp_id_up, $m) || (int)$m[1] < 1 || (int)$m[1] > 999) {
+      $reg_error = "Employee ID must be in format EMP-001 to EMP-999.";
+    } else {
+      // Check uniqueness before attempting insert to avoid fatal DB errors
+      $chk = $conn->prepare("SELECT 1 FROM employees WHERE employee_id = ? LIMIT 1");
+      $chk->bind_param("s", $emp_id_up);
+      $chk->execute();
+      $res = $chk->get_result();
+      if ($res && $res->num_rows > 0) {
+        $reg_error = "Employee ID already exists.";
+      }
+    }
+  }
+
+  if ($reg_error === "") {
     // ── NEW: profile photo upload ──
     $photo_path = "";
     if (isset($_FILES["emp_photo"]) && $_FILES["emp_photo"]["error"] === 0) {
@@ -164,14 +187,15 @@ if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST") {
     }
 
     $stmt = $conn->prepare("INSERT INTO employees (employee_id, full_name, role, passcode, job_role, photo_url) VALUES (?,?,?,?,?,?)");
-    $stmt->bind_param("ssssss", $emp_id, $name, $role, $passcode, $job_role, $photo_path);
+    $stmt->bind_param("ssssss", $emp_id_up, $name, $role, $passcode, $job_role, $photo_path);
     //                 ^^^^^^ 6 s's — one per ? placeholder
 
     if ($stmt->execute()) {
       header("Location: ?page=login&registered=1");
       exit;
     } else {
-      $reg_error = "Employee ID already exists.";
+      // Defensive fallback: if insert still fails, present friendly popup message
+      $reg_error = "Failed to create account. Employee ID may already exist.";
     }
   }
 }
@@ -2320,7 +2344,17 @@ function factorial(int $n): int
       <div class="auth-box">
         <div class="auth-logo">Bloom POS</div>
         <div class="auth-sub">Flower Shop Point of Sale</div>
-        <?php if ($auth_error !== ''): ?><div class="auth-err"><?= htmlspecialchars($auth_error, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+        <?php if ($auth_error !== ''): ?><div class="auth-err"><?= htmlspecialchars($auth_error, ENT_QUOTES, 'UTF-8') ?></div>
+        <script>
+          document.addEventListener('DOMContentLoaded', function(){
+            var err = <?= json_encode($auth_error) ?>;
+            if (err && err !== '') {
+              var f = document.querySelector('form[action="?page=login"]');
+              if (f) { try { f.reset(); var el = f.querySelector('[name=emp_id]'); if(el) el.focus(); } catch(e){} }
+            }
+          });
+        </script>
+        <?php endif; ?>
         <?php if (isset($_GET['registered'])): ?><div class="auth-ok">Account created. You may now log in.</div><?php endif; ?>
         <form method="POST" action="?page=login">
           <div class="form-group"><label>Employee ID</label><input type="text" name="emp_id" value="<?= htmlspecialchars($remembered_id, ENT_QUOTES, 'UTF-8') ?>" placeholder="EMP-001" required autofocus></div>
@@ -2345,7 +2379,17 @@ function factorial(int $n): int
       <div class="auth-box" style="width:420px;">
         <div class="auth-logo">Bloom POS</div>
         <div class="auth-sub">Register Staff Account</div>
-        <?php if ($reg_error !== ''): ?><div class="auth-err"><?= htmlspecialchars($reg_error, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+        <?php if ($reg_error !== ''): ?><div class="auth-err"><?= htmlspecialchars($reg_error, ENT_QUOTES, 'UTF-8') ?></div>
+        <script>
+          document.addEventListener('DOMContentLoaded', function(){
+            var err = <?= json_encode($reg_error) ?>;
+            if (err && err !== '') {
+              var f = document.querySelector('form[action="?page=register"]');
+              if (f) { try { f.reset(); var el = f.querySelector('[name=emp_id]'); if(el) el.focus(); } catch(e){} }
+            }
+          });
+        </script>
+        <?php endif; ?>
         <form method="POST" action="?page=register" enctype="multipart/form-data">
           <div class="form-row">
             <div class="form-group"><label>Employee ID</label><input type="text" name="emp_id" placeholder="EMP-003" required></div>
