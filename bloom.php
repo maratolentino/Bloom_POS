@@ -71,6 +71,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_cart'])) {
   exit;
 }
 
+// ── AJAX: Assign/Remove Product Discount ─────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'assign_product_discount') {
+  header('Content-Type: application/json');
+  if (!isset($_SESSION['user_role']) || $_SESSION['user_role'] !== 'Admin') {
+    http_response_code(403);
+    echo json_encode(['status'=>'error','message'=>'Unauthorized']);
+    exit;
+  }
+  $sku = isset($_POST['sku']) ? $conn->real_escape_string($_POST['sku']) : '';
+  $discount_id = isset($_POST['discount_id']) && $_POST['discount_id'] !== '' ? (int)$_POST['discount_id'] : null;
+  
+  if (!$sku) {
+    echo json_encode(['status'=>'error','message'=>'Missing SKU']);
+    exit;
+  }
+  
+  try {
+    if ($discount_id === null) {
+      $stmt = $conn->prepare("UPDATE inventory SET discount_id = NULL WHERE sku = ?");
+      $stmt->bind_param("s", $sku);
+    } else {
+      $stmt = $conn->prepare("UPDATE inventory SET discount_id = ? WHERE sku = ?");
+      $stmt->bind_param("is", $discount_id, $sku);
+    }
+    if ($stmt->execute()) {
+      echo json_encode(['status'=>'ok','message'=>'Discount assignment updated']);
+    } else {
+      echo json_encode(['status'=>'error','message'=>'Database update failed']);
+    }
+    $stmt->close();
+  } catch (Exception $e) {
+    echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+  }
+  exit;
+}
+
+// ── AJAX: Delete Promotion with Automatic Unassignment ────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_promotion_ajax') {
+  header('Content-Type: application/json');
+  if (!isset($_SESSION['user_role']) || $_SESSION['user_role'] !== 'Admin') {
+    http_response_code(403);
+    echo json_encode(['status'=>'error','message'=>'Unauthorized']);
+    exit;
+  }
+  $discount_id = isset($_POST['discount_id']) ? (int)$_POST['discount_id'] : 0;
+  
+  if (!$discount_id) {
+    echo json_encode(['status'=>'error','message'=>'Missing discount ID']);
+    exit;
+  }
+  
+  try {
+    // First, remove this discount from all products
+    $stmt = $conn->prepare("UPDATE inventory SET discount_id = NULL WHERE discount_id = ?");
+    if ($stmt) {
+      $stmt->bind_param("i", $discount_id);
+      $stmt->execute();
+      $stmt->close();
+    }
+    
+    // Then delete the promotion
+    $stmt = $conn->prepare("DELETE FROM discounts WHERE discount_id = ?");
+    if ($stmt) {
+      $stmt->bind_param("i", $discount_id);
+      if ($stmt->execute()) {
+        echo json_encode(['status'=>'ok','message'=>'Promotion deleted successfully']);
+      } else {
+        echo json_encode(['status'=>'error','message'=>'Failed to delete promotion']);
+      }
+      $stmt->close();
+    } else {
+      echo json_encode(['status'=>'error','message'=>'Database error']);
+    }
+  } catch (Exception $e) {
+    echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+  }
+  exit;
+}
+
 // Ensure `member_since` column exists on `customers` to support Member Since
 $colCheck = $conn->query("SHOW COLUMNS FROM customers LIKE 'member_since'");
 if ($colCheck && $colCheck->num_rows === 0) {
@@ -112,6 +191,21 @@ if ($colCheckRej && $colCheckRej->num_rows === 0) {
 $historyCheck = $conn->query("SHOW TABLES LIKE 'customer_approval_history'");
 if ($historyCheck && $historyCheck->num_rows === 0) {
   $conn->query("CREATE TABLE customer_approval_history (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, customer_id INT NOT NULL, action VARCHAR(32) NOT NULL, by_employee_id VARCHAR(50) NULL, note VARCHAR(255) NULL, ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+// Ensure promotion tracking columns exist in sales table
+$promoCols = ['promotion_id', 'promotion_name', 'promotion_type'];
+foreach ($promoCols as $col) {
+  $colCheck = $conn->query("SHOW COLUMNS FROM sales LIKE '$col'");
+  if ($colCheck && $colCheck->num_rows === 0) {
+    if ($col === 'promotion_id') {
+      $conn->query("ALTER TABLE sales ADD COLUMN promotion_id INT NULL DEFAULT NULL");
+    } elseif ($col === 'promotion_type') {
+      $conn->query("ALTER TABLE sales ADD COLUMN promotion_type VARCHAR(50) NULL DEFAULT NULL");
+    } else {
+      $conn->query("ALTER TABLE sales ADD COLUMN promotion_name VARCHAR(100) NULL DEFAULT NULL");
+    }
+  }
 }
 
 // Simplified session model: no employee login/timeouts.
@@ -319,15 +413,20 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     $hasWalletCols = true;
   }
 
+  // Capture promotion details
+  $promotion_id = (isset($_POST["promotion_id"]) && $_POST["promotion_id"] !== "") ? (int)$_POST["promotion_id"] : null;
+  $promotion_name = (isset($_POST["promotion_name"]) && $_POST["promotion_name"] !== "") ? $conn->real_escape_string($_POST["promotion_name"]) : null;
+  $promotion_type = (isset($_POST["promotion_type"]) && $_POST["promotion_type"] !== "") ? $conn->real_escape_string($_POST["promotion_type"]) : null;
+
   if ($hasWalletCols) {
-    $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+    $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
     if ($stmt) {
-      $stmt->bind_param("ssdddsdssssi", $transaction_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $employee_id, $customer_id);
+      $stmt->bind_param("ssdddsdsssisssi", $transaction_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
     }
   } else {
-    $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,'Completed',?,?)");
+    $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
     if ($stmt) {
-      $stmt->bind_param("ssdddsdsi", $transaction_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $employee_id, $customer_id);
+      $stmt->bind_param("ssdddsdisssi", $transaction_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
     }
   }
 
@@ -408,16 +507,21 @@ if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
     }
 
     if ($is_update) {
+      if ($old_sku !== $sku) {
+        $_SESSION['inventory_error'] = 'SKU cannot be changed while editing a product. Create a new product record instead.';
+        header('Location: ?page=inventory&tab=items');
+        exit;
+      }
       if ($image_path) {
-        $stmt = $conn->prepare("UPDATE inventory SET sku = ?, product_name = ?, price = ?, stock_qty = ?, category_id = ?, image_url = ? WHERE sku = ?");
-        $stmt->bind_param("ssdiiss", $sku, $name, $price, $qty, $cat_id, $image_path, $old_sku);
+        $stmt = $conn->prepare("UPDATE inventory SET product_name = ?, price = ?, stock_qty = ?, category_id = ?, image_url = ?, discount_id = ? WHERE sku = ?");
+        $stmt->bind_param("sdiiiss", $name, $price, $qty, $cat_id, $image_path, $disc_id, $old_sku);
       } else {
-        $stmt = $conn->prepare("UPDATE inventory SET sku = ?, product_name = ?, price = ?, stock_qty = ?, category_id = ? WHERE sku = ?");
-        $stmt->bind_param("ssdiis", $sku, $name, $price, $qty, $cat_id, $old_sku);
+        $stmt = $conn->prepare("UPDATE inventory SET product_name = ?, price = ?, stock_qty = ?, category_id = ?, discount_id = ? WHERE sku = ?");
+        $stmt->bind_param("sdiiis", $name, $price, $qty, $cat_id, $disc_id, $old_sku);
       }
     } else {
-      $stmt = $conn->prepare("INSERT INTO inventory (sku, product_name, price, stock_qty, category_id, image_url) VALUES (?, ?, ?, ?, ?, ?)");
-      $stmt->bind_param("ssdiss", $sku, $name, $price, $qty, $cat_id, $image_path);
+      $stmt = $conn->prepare("INSERT INTO inventory (sku, product_name, price, stock_qty, category_id, discount_id, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)");
+      $stmt->bind_param("ssdiiis", $sku, $name, $price, $qty, $cat_id, $disc_id, $image_path);
     }
 
     $dbSuccess = false;
@@ -531,7 +635,7 @@ if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
   }
   if (isset($_POST["add_discount"])) {
     $d_name   = $conn->real_escape_string(isset($_POST["d_name"])   ? $_POST["d_name"]   : "");
-    $d_type   = $conn->real_escape_string(isset($_POST["d_type"])   ? $_POST["d_type"]   : "Percentage");
+    $d_type   = $conn->real_escape_string(isset($_POST["d_type"])   ? $_POST["d_type"]   : "percent");
     $d_value  = floatval(str_replace(",", "", isset($_POST["d_value"])  ? $_POST["d_value"]  : "0"));
     $d_status = (int)(isset($_POST["d_status"]) ? $_POST["d_status"] : 0);
     $d_expiry = (isset($_POST["d_expiry"]) && $_POST["d_expiry"] !== "") ? "'" . $conn->real_escape_string($_POST["d_expiry"]) . "'" : "NULL";
@@ -829,10 +933,12 @@ function effectivePrice($item) //function to calculate effective price of an ite
 {
   $p = floatval($item["price"]);
   if (!empty($item["disc_status"]) && $item["disc_status"] == 1 && !empty($item["discount_value"])) {
-    switch ($item["discount_type"]) {
-      case "Percentage":
+    $dtype = strtolower((string)$item["discount_type"]);
+    switch ($dtype) {
+      case "percentage":
+      case "percent":
         return $p * (1 - $item["discount_value"] / 100);
-      case "Fixed":
+      case "fixed":
         return max(0, $p - $item["discount_value"]);
     }
   }
@@ -2657,6 +2763,11 @@ function factorial(int $n): int
                   <?php endif; ?>
                 </div>
                 <div class="prod-info">
+                  <?php if (!empty($item['disc_status']) && $item['disc_status'] == 1 && !empty($item['discount_value'])): 
+                    $dlabel = in_array(strtolower($item['discount_type'] ?? ''), ['percentage', 'percent']) ? (floatval($item['discount_value']) . '% OFF') : ('₱' . number_format($item['discount_value'], 2) . ' OFF');
+                  ?>
+                    <span class="badge badge-blue" style="font-size:10px; margin-bottom:6px; display:inline-block;"><?= htmlspecialchars($dlabel, ENT_QUOTES, 'UTF-8') ?></span>
+                  <?php endif; ?>
                   <div class="prod-name"><?= htmlspecialchars($item['product_name'], ENT_QUOTES, 'UTF-8') ?></div>
                   <div class="prod-price">
                     &#8369;<?= number_format($ep_with_vat, 2) ?>
@@ -2724,9 +2835,9 @@ function factorial(int $n): int
           <div class="tot-row">
             <span>Promotion</span>
             <select id="promo_select" onchange="calcTotals()" style="border:none; background:transparent; color:var(--chestnut); font-weight:600; font-size:12px; outline:none; padding:0; width:auto;">
-              <option value="0" data-type="">None</option>
+              <option value="0" data-value="0" data-type="" data-name="">None</option>
               <?php foreach ($active_promos as $p): ?>
-                <option value="<?= $p['discount_value'] ?>" data-type="<?= $p['discount_type'] ?>"><?= htmlspecialchars($p['discount_name'], ENT_QUOTES, 'UTF-8') ?></option>
+                <option value="<?= (int)$p['discount_id'] ?>" data-value="<?= $p['discount_value'] ?>" data-type="<?= htmlspecialchars($p['discount_type'], ENT_QUOTES, 'UTF-8') ?>" data-name="<?= htmlspecialchars($p['discount_name'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($p['discount_name'], ENT_QUOTES, 'UTF-8') ?></option>
               <?php endforeach; ?>
             </select>
           </div>
@@ -2762,6 +2873,9 @@ function factorial(int $n): int
           <input type="hidden" name="discount_amount" id="f_disc">
           <input type="hidden" name="points_redeemed" id="f_points">
           <input type="hidden" name="customer_id" id="f_customer">
+          <input type="hidden" name="promotion_id" id="f_promotion_id">
+          <input type="hidden" name="promotion_name" id="f_promotion_name">
+          <input type="hidden" name="promotion_type" id="f_promotion_type">
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
             <div>
               <div style="font-size:11px; font-weight:700; color:var(--text-3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:10px;">Receipt Preview</div>
@@ -2772,6 +2886,7 @@ function factorial(int $n): int
                 <div id="r_items"></div>
                 <hr class="receipt-sep">
                 <div class="receipt-row"><span>Subtotal</span><span id="r_sub">&#8369;0.00</span></div>
+                <div class="receipt-row"><span id="r_promo_label" style="display:none;">Promotion: <span id="r_promo_name"></span></span><span id="r_promo_amt" style="display:none;"></span></div>
                 <div class="receipt-row"><span>Discount</span><span id="r_disc">&#8369;0.00</span></div>
                 <div class="receipt-row"><span>Points Redeemed</span><span id="r_points">&#8369;0.00</span></div>
                 <div class="receipt-row"><span>VAT 12%</span><span id="r_tax">&#8369;0.00</span></div>
@@ -2997,7 +3112,19 @@ function factorial(int $n): int
           cart = Object.keys(srv).map(sku => {
             const qty = parseInt(srv[sku],10) || 0;
             const prod = allProducts.find(p => p.sku === sku) || null;
-            return prod ? { sku: sku, name: prod.product_name, price: parseFloat(prod.price), qty: qty, stock: prod.stock_qty } : null;
+            if (!prod) return null;
+            let price = parseFloat(prod.price);
+            const dtype = (prod.discount_type || prod.discountType || '').toLowerCase();
+            const dvalue = parseFloat(prod.discount_value || prod.discountValue || 0) || 0;
+            const active = prod.disc_status == 1 && dvalue > 0;
+            if (active) {
+              if (dtype === 'percentage' || dtype === 'percent') {
+                price = price * (1 - dvalue / 100);
+              } else if (dtype === 'fixed') {
+                price = Math.max(0, price - dvalue);
+              }
+            }
+            return { sku: sku, name: prod.product_name, price: price, qty: qty, stock: prod.stock_qty };
           }).filter(Boolean);
           renderCart();
         }catch(e){}
@@ -3151,14 +3278,18 @@ function factorial(int $n): int
       function calcTotals() {
         const sub = cart.reduce((s, i) => s + i.price * i.qty, 0);
         const sel = document.getElementById('promo_select');
-        const pval = parseFloat(sel.value) || 0;
-        const ptype = sel.options[sel.selectedIndex].dataset.type;
+        const opt = sel.options[sel.selectedIndex];
+        const promoId = sel.value || '0';
+        const pval = parseFloat(opt.dataset.value || '0') || 0;
+        const ptype = (opt.dataset.type || '').toLowerCase();
+        const pname = opt.dataset.name || '';
         let disc;
         switch (ptype) {
-          case 'Percentage':
+          case 'percentage':
+          case 'percent':
             disc = sub * (pval / 100);
             break;
-          case 'Fixed':
+          case 'fixed':
             disc = Math.min(pval, sub);
             break;
           default:
@@ -3189,6 +3320,17 @@ function factorial(int $n): int
 
         document.getElementById('r_sub').innerHTML = fmt(sub);
         document.getElementById('r_disc').innerHTML = fmt(disc);
+        // Promotion display on receipt
+        const rPromoLabel = document.getElementById('r_promo_label');
+        const rPromoName = document.getElementById('r_promo_name');
+        const rPromoAmt = document.getElementById('r_promo_amt');
+        if (promoId && promoId !== '0' && disc > 0) {
+          if (rPromoLabel) { rPromoLabel.style.display = 'inline'; rPromoName.textContent = pname; }
+          if (rPromoAmt) { rPromoAmt.style.display = 'inline'; rPromoAmt.innerHTML = '-' + fmt(disc); }
+        } else {
+          if (rPromoLabel) rPromoLabel.style.display = 'none';
+          if (rPromoAmt) { rPromoAmt.style.display = 'none'; rPromoAmt.innerHTML = ''; }
+        }
         document.getElementById('r_points').innerHTML = pointsApplied > 0 ? '-' + fmt(pointsApplied) : '&#8369;0.00';
         document.getElementById('r_tax').innerHTML = fmt(tax);
         document.getElementById('r_total').innerHTML = fmt(finalTotal);
@@ -3199,6 +3341,13 @@ function factorial(int $n): int
         document.getElementById('f_points').value = pointsApplied.toFixed(2);
         document.getElementById('f_cart').value = JSON.stringify(cart);
         document.getElementById('f_customer').value = getSelectedCustomerValue();
+        // set promotion hidden fields
+        const fpid = document.getElementById('f_promotion_id');
+        const fpname = document.getElementById('f_promotion_name');
+        const fptype = document.getElementById('f_promotion_type');
+        if (fpid) fpid.value = promoId;
+        if (fpname) fpname.value = pname;
+        if (fptype) fptype.value = ptype;
       }
 
       function openPayModal() {
@@ -3931,6 +4080,11 @@ function factorial(int $n): int
                           <span class="badge badge-gray" style="font-size:10px;"><?= htmlspecialchars($item['category_name'] ?? 'Uncategorized', ENT_QUOTES, 'UTF-8') ?></span>
                           <?php if ($item['stock_qty'] < 10): ?><span class="badge badge-red" style="font-size:10px;"><?= $item['stock_qty'] ?> left</span><?php endif; ?>
                         </div>
+                        <?php if (!empty($item['disc_status']) && $item['disc_status'] == 1 && !empty($item['discount_value'])):
+                          $dlabel = in_array(strtolower($item['discount_type'] ?? ''), ['percentage', 'percent']) ? (floatval($item['discount_value']) . '% OFF') : ('₱' . number_format($item['discount_value'], 2) . ' OFF');
+                        ?>
+                          <div style="margin-bottom:6px;"><span class="badge badge-blue" style="font-size:10px;"><?= htmlspecialchars($dlabel, ENT_QUOTES, 'UTF-8') ?></span></div>
+                        <?php endif; ?>
                         <div class="inv-card-name"><?= htmlspecialchars($item['product_name'], ENT_QUOTES, 'UTF-8') ?></div>
                         <div class="inv-card-sku"><?= $item['sku'] ?></div>
                         <div class="inv-card-price">
@@ -4007,12 +4161,12 @@ function factorial(int $n): int
                     <div class="form-row">
                       <div class="form-group"><label>Type</label>
                         <select name="d_type" id="disc_type_sel">
-                          <option value="Percentage">Percentage (%)</option>
-                          <option value="Fixed">Fixed Amount (&#8369;)</option>
+                          <option value="percent">Percentage (%)</option>
+                          <option value="fixed">Fixed Amount (&#8369;)</option>
                         </select>
                       </div>
                       <div class="form-group"><label>Value</label>
-                        <input type="text" name="d_value" id="disc_val" placeholder="0.00" oninput="fmtDisc(this)" required>
+                        <input type="text" name="d_value" id="disc_val" placeholder="0.00" onblur="fmtDisc(this)" required>
                       </div>
                     </div>
                     <div class="form-row">
@@ -4033,7 +4187,8 @@ function factorial(int $n): int
                     <div class="card" style="text-align:center; padding:30px; color:var(--text-3);">No promotions yet.</div>
                     <?php else: foreach ($discounts as $d):
                       $is_active = $d['status'] == 1;
-                      $vdisp = ($d['discount_type'] === 'Percentage') ? $d['discount_value'] . '%' : '&#8369;' . number_format($d['discount_value'], 2);
+                      $dt = strtolower($d['discount_type'] ?? '');
+                      $vdisp = in_array($dt, ['percentage','percent']) ? $d['discount_value'] . '%' : '&#8369;' . number_format($d['discount_value'], 2);
                     ?>
                       <div class="promo-card <?= !$is_active ? 'inactive' : '' ?>">
                         <div>
@@ -4049,10 +4204,9 @@ function factorial(int $n): int
                             <input type="hidden" name="current_status" value="<?= $d['status'] ?>">
                             <button type="submit" name="toggle_discount_status" class="btn btn-sm <?= $is_active ? 'btn-danger' : 'btn-secondary' ?>"><?= $is_active ? 'Disable' : 'Enable' ?></button>
                           </form>
-                          <form data-confirm="Delete this promotion?" method="POST" action="?page=inventory&tab=discounts">
-                            <input type="hidden" name="delete_discount_id" value="<?= $d['discount_id'] ?>">
-                            <button type="submit" name="delete_discount" class="btn btn-sm btn-danger">Delete</button>
-                          </form>
+                          <div>
+                            <button type="button" class="btn btn-sm btn-danger promo-delete-btn" data-id="<?= (int)$d['discount_id'] ?>" data-name="<?= htmlspecialchars($d['discount_name'], ENT_QUOTES, 'UTF-8') ?>">Delete</button>
+                          </div>
                         </div>
                       </div>
                   <?php endforeach;
@@ -4225,6 +4379,10 @@ function factorial(int $n): int
               document.getElementById('prod_submit_btn').name = 'add_product';
               document.getElementById('prod_form').reset();
               document.getElementById('hidden_sku').value = '';
+              const skuEl = document.getElementById('form_sku');
+              if (skuEl) {
+                skuEl.readOnly = false;
+              }
               // clear VAT display
               const vatEl = document.getElementById('form_vat'); if (vatEl) vatEl.value = '';
               document.getElementById('productModal').classList.add('open');
@@ -4235,7 +4393,11 @@ function factorial(int $n): int
             function openEditModal(data, title = 'Edit Product') {
               document.getElementById('prod_modal_title').textContent = title;
               document.getElementById('prod_submit_btn').name = 'update_product';
-              document.getElementById('form_sku').value = data.sku;
+              const skuEl = document.getElementById('form_sku');
+              if (skuEl) {
+                skuEl.value = data.sku;
+                skuEl.readOnly = true;
+              }
               document.getElementById('hidden_sku').value = data.sku;
               document.getElementById('form_name').value = data.product_name;
               const p = parseFloat(data.price);
@@ -4305,19 +4467,20 @@ function factorial(int $n): int
             }
 
             function fmtDisc(input) {
-              let raw = input.value.replace(/[^0-9]/g, '');
-              if (!raw) {
+              const type = document.getElementById('disc_type_sel').value;
+              let raw = input.value.replace(/[^0-9.]/g, '');
+              if (!raw || raw === '.') {
                 input.value = '';
                 return;
               }
-              let n = parseInt(raw, 10);
-              const type = document.getElementById('disc_type_sel').value;
-              const max = type === 'Percentage' ? 10000 : 99999900;
+              let n = parseFloat(raw);
+              if (isNaN(n)) {
+                input.value = '';
+                return;
+              }
+              const max = type === 'percent' ? 100 : 99999900;
               if (n > max) n = max;
-              input.value = (n / 100).toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              });
+              input.value = n.toFixed(2);
             }
             document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
               if (e.target === o) o.classList.remove('open');
@@ -4447,6 +4610,46 @@ function factorial(int $n): int
                   else if (trigger instanceof HTMLAnchorElement && trigger.href) window.location.href = trigger.href;
                 });
               }
+            });
+
+            // AJAX handler for promotion deletion buttons
+            document.addEventListener('click', function(e) {
+              const btn = e.target.closest('.promo-delete-btn');
+              if (!btn) return;
+              e.preventDefault();
+              const id = btn.dataset.id;
+              const name = btn.dataset.name || '';
+              if (!id) return;
+              showConfirm('Delete promotion "' + name + '"?').then(async function(ok) {
+                if (!ok) return;
+                try {
+                  const body = new URLSearchParams();
+                  body.append('action', 'delete_promotion_ajax');
+                  body.append('discount_id', id);
+                  const resp = await fetch(window.location.pathname, { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() });
+                  if (!resp.ok) { toast('Failed to delete promotion', 'red'); return; }
+                  const j = await resp.json();
+                  if (j && j.status === 'ok') {
+                    // remove promo card from UI
+                    const card = btn.closest('.promo-card'); if (card) card.remove();
+                    // remove option from promo_select
+                    const sel = document.getElementById('promo_select');
+                    if (sel) {
+                      const opt = sel.querySelector('option[value="' + id + '"]');
+                      if (opt) opt.remove();
+                      // reset to None if currently selected
+                      if (sel.value === id) sel.value = '0';
+                    }
+                    calcTotals();
+                    toast('Promotion deleted');
+                  } else {
+                    toast((j && j.message) ? j.message : 'Delete failed', 'red');
+                  }
+                } catch (err) {
+                  console.error(err);
+                  toast('Error deleting promotion', 'red');
+                }
+              });
             });
 
             // Approval history data injected from server
