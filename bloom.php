@@ -115,12 +115,9 @@ if ($historyCheck && $historyCheck->num_rows === 0) {
 }
 
 // Simplified session model: no employee login/timeouts.
-// Ensure basic session keys exist and enable admin UI (remove access blocking).
-$_SESSION['user_id']   = $_SESSION['user_id'] ?? null;
-$_SESSION['user_name'] = $_SESSION['user_name'] ?? 'Cashier';
-$_SESSION['user_role'] = $_SESSION['user_role'] ?? 'Cashier';
-$_SESSION['user_photo'] = $_SESSION['user_photo'] ?? '';
-$is_admin = true; // allow access to admin pages in a loginless mode
+// Do not force default user identity here — require explicit login to set these values.
+// Compute admin flag safely from session when present.
+$is_admin = (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin');
 
 // (duplicate cart handlers removed — top-of-file handlers are used)
 
@@ -3616,9 +3613,9 @@ function factorial(int $n): int
 
   <?php else:
     // ── UPDATED: pull photo from session ──
-    $initials   = makeInitials($_SESSION['user_name']);
+    $initials   = isset($_SESSION['user_name']) ? makeInitials($_SESSION['user_name']) : '';
     $user_photo = isset($_SESSION['user_photo']) ? $_SESSION['user_photo'] : '';
-    $is_admin   = $_SESSION['user_role'] === 'Admin';
+    $is_admin   = (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin');
   ?>
     <div class="app">
       <div class="overlay" id="confirmDialogModal">
@@ -3710,14 +3707,14 @@ function factorial(int $n): int
             <div class="sb-avatar" onclick="document.getElementById('myProfileModal').classList.add('open')" style="cursor:pointer;" title="Edit my profile">
               <?php if (!empty($user_photo)): ?>
                 <img src="<?= htmlspecialchars($user_photo, ENT_QUOTES, 'UTF-8') ?>"
-                  alt="<?= htmlspecialchars($_SESSION['user_name'], ENT_QUOTES, 'UTF-8') ?>">
+                  alt="<?= htmlspecialchars(isset($_SESSION['user_name']) ? $_SESSION['user_name'] : '', ENT_QUOTES, 'UTF-8') ?>">
               <?php else: ?>
                 <?= $initials ?>
               <?php endif; ?>
             </div>
             <div class="sb-user-info">
-              <div class="sb-user-name"><?= htmlspecialchars($_SESSION['user_name'], ENT_QUOTES, 'UTF-8') ?></div>
-              <div class="sb-user-role"><?= htmlspecialchars($_SESSION['user_role'], ENT_QUOTES, 'UTF-8') ?> &middot; <?= htmlspecialchars($_SESSION['user_id'], ENT_QUOTES, 'UTF-8') ?></div>
+              <div class="sb-user-name"><?= htmlspecialchars(isset($_SESSION['user_name']) ? $_SESSION['user_name'] : 'Guest', ENT_QUOTES, 'UTF-8') ?></div>
+              <div class="sb-user-role"><?= htmlspecialchars(isset($_SESSION['user_role']) ? $_SESSION['user_role'] : 'Guest', ENT_QUOTES, 'UTF-8') ?> &middot; <?= htmlspecialchars(isset($_SESSION['user_id']) ? $_SESSION['user_id'] : '', ENT_QUOTES, 'UTF-8') ?></div>
             </div>
           </div>
           <a href="?page=logout" class="sb-logout">Sign Out</a>
@@ -3739,9 +3736,9 @@ function factorial(int $n): int
                 <?php endif; ?>
               </div>
               <div style="min-width:0;">
-                <div style="font-size:16px; font-weight:700; color:var(--espresso);"><?= htmlspecialchars($_SESSION['user_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                <div style="font-size:16px; font-weight:700; color:var(--espresso);"><?= htmlspecialchars(isset($_SESSION['user_name']) ? $_SESSION['user_name'] : 'Guest', ENT_QUOTES, 'UTF-8') ?></div>
                 <div style="font-size:12px; color:var(--text-3); margin-top:3px;">
-                  <?= htmlspecialchars($_SESSION['user_id'], ENT_QUOTES, 'UTF-8') ?> &middot; <?= htmlspecialchars($_SESSION['user_role'], ENT_QUOTES, 'UTF-8') ?>
+                  <?= htmlspecialchars(isset($_SESSION['user_id']) ? $_SESSION['user_id'] : '', ENT_QUOTES, 'UTF-8') ?> &middot; <?= htmlspecialchars(isset($_SESSION['user_role']) ? $_SESSION['user_role'] : 'Guest', ENT_QUOTES, 'UTF-8') ?>
                 </div>
               </div>
             </div>
@@ -3751,7 +3748,7 @@ function factorial(int $n): int
 
               <div class="form-group">
                 <label>Full Name</label>
-                <input type="text" name="full_name" value="<?= htmlspecialchars($_SESSION['user_name'], ENT_QUOTES, 'UTF-8') ?>" required>
+                <input type="text" name="full_name" value="<?= htmlspecialchars(isset($_SESSION['user_name']) ? $_SESSION['user_name'] : '', ENT_QUOTES, 'UTF-8') ?>" required>
               </div>
 
               <div class="form-group">
@@ -3814,7 +3811,7 @@ function factorial(int $n): int
             <div class="page-header">
               <div>
                 <div class="page-title">Dashboard</div>
-                <div class="page-sub"><?php echo date('l, d F Y'); ?> &middot; <?php echo $_SESSION['user_role']; ?> view</div>
+                <div class="page-sub"><?php echo date('l, d F Y'); ?> &middot; <?php echo isset($_SESSION['user_role']) ? htmlspecialchars($_SESSION['user_role'], ENT_QUOTES, 'UTF-8') : 'Guest'; ?> view</div>
               </div>
             </div>
 
