@@ -295,11 +295,25 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
       $conn->query("UPDATE inventory SET stock_qty = stock_qty - $qty WHERE sku = '$sku' AND stock_qty >= $qty");
     }
     if ($customer_id) {
-      $pts = 5;
+      // Deduct redeemed points if provided (points_redeemed is in PHP float format)
+      $raw_points_used = isset($_POST['points_redeemed']) ? $_POST['points_redeemed'] : 0;
+      $points_used = is_numeric($raw_points_used) ? (int)floor(floatval($raw_points_used)) : 0;
+      if ($points_used > 0) {
+        $stmtDeduct = $conn->prepare("UPDATE customers SET loyalty_points = GREATEST(loyalty_points - ?, 0) WHERE customer_id = ?");
+        if ($stmtDeduct) {
+          $stmtDeduct->bind_param("ii", $points_used, $customer_id);
+          $stmtDeduct->execute();
+          $stmtDeduct->close();
+        }
+      }
+      // Award loyalty points for this purchase (existing behaviour)
+      $ptsEarned = 5;
       $updatePoints = $conn->prepare("UPDATE customers SET loyalty_points = loyalty_points + ? WHERE customer_id = ?");
-      $updatePoints->bind_param("ii", $pts, $customer_id);
-      $updatePoints->execute();
-      $updatePoints->close();
+      if ($updatePoints) {
+        $updatePoints->bind_param("ii", $ptsEarned, $customer_id);
+        $updatePoints->execute();
+        $updatePoints->close();
+      }
     }
     $order_skus = implode(',', array_map(function ($i) { return $i['sku']; }, $cart_data));
     header("Location: ?page=checkout&success=1&order_id=" . urlencode($order_skus));
@@ -2572,6 +2586,9 @@ function factorial(int $n): int
             <?php foreach ($inventory as $item):
               $ep = effectivePrice($item);
               $hasDisc = $ep < $item['price'];
+              $taxRate = isset($store_info['tax_rate']) ? floatval($store_info['tax_rate']) : 0.12;
+              $ep_with_vat = $ep * (1 + $taxRate);
+              $base_with_vat = floatval($item['price']) * (1 + $taxRate);
             ?>
               <div class="prod-tile"
                 data-cat="<?= htmlspecialchars($item['category_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
@@ -2596,8 +2613,8 @@ function factorial(int $n): int
                 <div class="prod-info">
                   <div class="prod-name"><?= htmlspecialchars($item['product_name'], ENT_QUOTES, 'UTF-8') ?></div>
                   <div class="prod-price">
-                    &#8369;<?= number_format($ep, 2) ?>
-                    <?php if ($hasDisc): ?><span style="font-size:10px; text-decoration:line-through; color:var(--text-3); margin-left:3px;">&#8369;<?= number_format($item['price'], 2) ?></span><?php endif; ?>
+                    &#8369;<?= number_format($ep_with_vat, 2) ?>
+                    <?php if ($hasDisc): ?><span style="font-size:10px; text-decoration:line-through; color:var(--text-3); margin-left:3px;">&#8369;<?= number_format($base_with_vat, 2) ?></span><?php endif; ?>
                   </div>
                   <div class="prod-stock <?= $item['stock_qty'] < 10 ? 'low-stock' : '' ?>">Stock: <?= $item['stock_qty'] ?></div>
                 </div>
@@ -2619,6 +2636,13 @@ function factorial(int $n): int
               <div class="combo-control" id="customer_combo_control" role="combobox" aria-haspopup="listbox" aria-expanded="false" tabindex="0">
                 <span class="combo-value" id="customer_combo_value">Walk-in Customer</span>
                 <span class="combo-arrow">▾</span>
+              </div>
+              <div id="points_section" style="margin-top:8px; display:flex; gap:8px; align-items:center; font-size:13px;">
+                <div style="color:var(--text-3);">Points:</div>
+                <div id="points_balance" style="font-weight:700; color:var(--chestnut);">0 pts</div>
+                <div style="margin-left:8px; color:var(--text-3);">Redeem</div>
+                <input type="number" id="points_input" min="0" value="0" style="width:90px; padding:8px; border-radius:6px; border:1px solid var(--taupe);" oninput="onPointsInput()">
+                <button type="button" onclick="clearPoints()" class="btn btn-secondary" style="padding:6px 10px;">Clear</button>
               </div>
               <div class="combo-panel" id="customer_combo_panel">
                 <input type="text" id="customer_search" class="combo-search" placeholder="Search customers..." autocomplete="off">
@@ -2661,6 +2685,7 @@ function factorial(int $n): int
             </select>
           </div>
           <div class="tot-row"><span>Discount</span><span id="d_discount" style="color:var(--green);">&#8212;</span></div>
+          <div class="tot-row"><span>Points Redeemed</span><span id="d_points">&#8212;</span></div>
           <div class="tot-row"><span>VAT (12%)</span><span id="d_tax">&#8369;0.00</span></div>
           <div class="tot-row grand"><span>Total</span><span id="d_total" style="color:var(--chestnut);">&#8369;0.00</span></div>
         </div>
@@ -2689,6 +2714,7 @@ function factorial(int $n): int
           <input type="hidden" name="final_total" id="f_total">
           <input type="hidden" name="tax_amount" id="f_tax">
           <input type="hidden" name="discount_amount" id="f_disc">
+          <input type="hidden" name="points_redeemed" id="f_points">
           <input type="hidden" name="customer_id" id="f_customer">
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
             <div>
@@ -2701,6 +2727,7 @@ function factorial(int $n): int
                 <hr class="receipt-sep">
                 <div class="receipt-row"><span>Subtotal</span><span id="r_sub">&#8369;0.00</span></div>
                 <div class="receipt-row"><span>Discount</span><span id="r_disc">&#8369;0.00</span></div>
+                <div class="receipt-row"><span>Points Redeemed</span><span id="r_points">&#8369;0.00</span></div>
                 <div class="receipt-row"><span>VAT 12%</span><span id="r_tax">&#8369;0.00</span></div>
                 <hr class="receipt-sep">
                 <div class="receipt-row" style="font-weight:700; font-size:14px;"><span>TOTAL</span><span id="r_total">&#8369;0.00</span></div>
@@ -2740,6 +2767,7 @@ function factorial(int $n): int
       let selectedCustomerId = '';
       const STORE_INFO = <?= json_encode($store_info, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       const allProducts = <?= json_encode($inventory) ?>;
+      const CUSTOMER_POINTS = <?= json_encode(array_reduce($customers, function($carry,$c){ $carry[$c['customer_id']] = intval($c['loyalty_points'] ?? 0); return $carry; }, []), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
       function getSelectedCustomerValue() {
         return selectedCustomerId;
@@ -2753,6 +2781,39 @@ function factorial(int $n): int
         document.querySelectorAll('#customer_list .combo-option').forEach(el => {
           el.classList.toggle('selected', el.dataset.value === selectedCustomerId);
         });
+        updatePointsUI();
+        calcTotals();
+      }
+
+      function updatePointsUI() {
+        const cid = getSelectedCustomerValue();
+        const bal = parseInt(CUSTOMER_POINTS[cid] || 0, 10) || 0;
+        const balEl = document.getElementById('points_balance');
+        if (balEl) balEl.textContent = bal + ' pts';
+        const pin = document.getElementById('points_input');
+        if (pin) {
+          pin.max = bal;
+          const cur = parseInt(pin.value || '0', 10) || 0;
+          if (cur > bal) pin.value = bal;
+        }
+      }
+
+      function onPointsInput() {
+        const pin = document.getElementById('points_input');
+        if (!pin) return;
+        const cid = getSelectedCustomerValue();
+        const bal = parseInt(CUSTOMER_POINTS[cid] || 0, 10) || 0;
+        let v = parseInt(pin.value || '0', 10) || 0;
+        if (v < 0) v = 0;
+        if (v > bal) v = bal;
+        pin.value = v;
+        calcTotals();
+      }
+
+      function clearPoints() {
+        const pin = document.getElementById('points_input');
+        if (pin) pin.value = 0;
+        calcTotals();
       }
 
       function filterCustomerOptions(query) {
@@ -2983,25 +3044,39 @@ function factorial(int $n): int
           default:
             disc = 0;
         }
-        const taxable = sub - disc,
-          tax = taxable * TAX_RATE,
-          total = taxable + tax;
+        const taxable = sub - disc;
+        const tax = taxable * TAX_RATE;
+        const total = taxable + tax;
+
+        // Loyalty points handling: cashier-chosen redemption (1 point = ₱1.00)
+        const selectedCust = getSelectedCustomerValue();
+        const pointsAvailable = parseInt(CUSTOMER_POINTS[selectedCust] || 0, 10) || 0;
+        const requested = parseInt(document.getElementById('points_input') ? document.getElementById('points_input').value || '0' : '0', 10) || 0;
+        const pointsToApply = Math.max(0, Math.min(requested, pointsAvailable, Math.floor(total)));
+        const pointsApplied = pointsToApply;
+        const finalTotal = Math.max(0, total - pointsApplied);
+
         const fmt = v => '&#8369;' + v.toLocaleString(undefined, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2
         });
         document.getElementById('d_subtotal').innerHTML = fmt(sub);
         document.getElementById('d_discount').innerHTML = disc > 0 ? '-' + fmt(disc) : '&#8212;';
+        document.getElementById('d_points').innerHTML = pointsApplied > 0 ? '-' + fmt(pointsApplied) : '&#8212;';
         document.getElementById('d_tax').innerHTML = fmt(tax);
-        document.getElementById('d_total').innerHTML = fmt(total);
-        document.getElementById('modal_total').innerHTML = fmt(total);
+        document.getElementById('d_total').innerHTML = fmt(finalTotal);
+        document.getElementById('modal_total').innerHTML = fmt(finalTotal);
+
         document.getElementById('r_sub').innerHTML = fmt(sub);
         document.getElementById('r_disc').innerHTML = fmt(disc);
+        document.getElementById('r_points').innerHTML = pointsApplied > 0 ? '-' + fmt(pointsApplied) : '&#8369;0.00';
         document.getElementById('r_tax').innerHTML = fmt(tax);
-        document.getElementById('r_total').innerHTML = fmt(total);
-        document.getElementById('f_total').value = total.toFixed(2);
+        document.getElementById('r_total').innerHTML = fmt(finalTotal);
+
+        document.getElementById('f_total').value = finalTotal.toFixed(2);
         document.getElementById('f_tax').value = tax.toFixed(2);
         document.getElementById('f_disc').value = disc.toFixed(2);
+        document.getElementById('f_points').value = pointsApplied.toFixed(2);
         document.getElementById('f_cart').value = JSON.stringify(cart);
         document.getElementById('f_customer').value = getSelectedCustomerValue();
       }
@@ -3507,6 +3582,9 @@ function factorial(int $n): int
                   <?php foreach ($inventory as $item):
                     $ep = effectivePrice($item);
                     $hasDisc = $ep < $item['price'];
+                    $taxRate = isset($store_info['tax_rate']) ? floatval($store_info['tax_rate']) : 0.12;
+                    $ep_with_vat = $ep * (1 + $taxRate);
+                    $base_with_vat = floatval($item['price']) * (1 + $taxRate);
                   ?>
                     <div class="inv-card" onclick="openEditModal(<?= htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8') ?>)">
                       <form data-confirm="Delete this product?" method="POST" action="?page=inventory&tab=items" style="position:absolute; top:8px; right:8px; z-index:2;">
@@ -3530,8 +3608,8 @@ function factorial(int $n): int
                         <div class="inv-card-name"><?= htmlspecialchars($item['product_name'], ENT_QUOTES, 'UTF-8') ?></div>
                         <div class="inv-card-sku"><?= $item['sku'] ?></div>
                         <div class="inv-card-price">
-                          &#8369;<?= number_format($ep, 2) ?>
-                          <?php if ($hasDisc): ?><span style="font-size:10px; text-decoration:line-through; color:var(--text-3); margin-left:4px;">&#8369;<?= number_format($item['price'], 2) ?></span><?php endif; ?>
+                          &#8369;<?= number_format($ep_with_vat, 2) ?>
+                          <?php if ($hasDisc): ?><span style="font-size:10px; text-decoration:line-through; color:var(--text-3); margin-left:4px;">&#8369;<?= number_format($base_with_vat, 2) ?></span><?php endif; ?>
                         </div>
                         <div class="inv-card-stock">Stock: <?= $item['stock_qty'] ?></div>
                         <div class="inv-actions" style="margin-top: 10px; width: 100%;">
@@ -3660,7 +3738,7 @@ function factorial(int $n): int
 
           <!-- Product Add/Edit Modal -->
           <div class="overlay" id="productModal">
-            <div class="modal-box">
+            <div class="modal-box wide" style="max-width:900px; width:900px;">
               <div class="modal-header">
                 <span class="modal-title" id="prod_modal_title">New Product</span>
                 <button class="modal-close" onclick="document.getElementById('productModal').classList.remove('open')">&times;</button>
@@ -3669,8 +3747,9 @@ function factorial(int $n): int
                 <input type="hidden" name="old_sku" id="hidden_sku">
                 <div class="form-group"><label>SKU / ID</label><input type="text" name="sku" id="form_sku" placeholder="ROSE-001" pattern="[A-Za-z]+-[0-9]{3}" title="Use FLOWERNAME-001 format" oninput="this.value = this.value.toUpperCase()" required></div>
                 <div class="form-group"><label>Product Name</label><input type="text" name="name" id="form_name" placeholder="Product name" required></div>
-                <div class="form-row">
-                  <div class="form-group"><label>Price (&#8369;)</label><input type="text" name="price" id="form_price" oninput="fmtCurr(this)" placeholder="0.00" required></div>
+                <div class="form-row-3">
+                  <div class="form-group"><label>Price (&#8369;)</label><input type="text" name="price" id="form_price" oninput="onPriceInput(this)" placeholder="0.00" required></div>
+                  <div class="form-group"><label>VAT (12%)</label><input type="text" id="form_vat" readonly placeholder="0.00" style="background:#f4f1ee; color:#333;"></div>
                   <div class="form-group"><label>Stock Qty</label><input type="number" name="qty" id="form_qty" placeholder="0" required></div>
                 </div>
                 <div class="form-row">
@@ -3820,6 +3899,8 @@ function factorial(int $n): int
               document.getElementById('prod_submit_btn').name = 'add_product';
               document.getElementById('prod_form').reset();
               document.getElementById('hidden_sku').value = '';
+              // clear VAT display
+              const vatEl = document.getElementById('form_vat'); if (vatEl) vatEl.value = '';
               document.getElementById('productModal').classList.add('open');
             }
 
@@ -3836,6 +3917,13 @@ function factorial(int $n): int
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
               });
+              // compute VAT based on server tax rate
+              const taxRate = parseFloat(<?= json_encode($store_info['tax_rate']) ?>);
+              const vatEl = document.getElementById('form_vat');
+              if (vatEl) {
+                const base = isNaN(p) ? 0 : p;
+                vatEl.value = (base * taxRate).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+              }
               document.getElementById('form_qty').value = data.stock_qty;
               document.getElementById('form_cat').value = data.category_id || '';
               document.getElementById('form_disc').value = data.discount_id || '';
@@ -3876,6 +3964,18 @@ function factorial(int $n): int
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
               });
+            }
+
+            function onPriceInput(input) {
+              // format the price field then update VAT display
+              fmtCurr(input);
+              const v = input.value.replace(/[^0-9.-]/g, '');
+              const num = parseFloat(v) || 0;
+              const taxRate = parseFloat(<?= json_encode($store_info['tax_rate']) ?>);
+              const vatEl = document.getElementById('form_vat');
+              if (vatEl) {
+                vatEl.value = (num * taxRate).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+              }
             }
 
             function fmtDisc(input) {
