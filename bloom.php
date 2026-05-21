@@ -4904,28 +4904,31 @@ function factorial(int $n): int
                     </tr>
                   </thead>
                   <tbody>
-                    <?php $r_sales_rows = $r_sales ? $r_sales->fetch_all(MYSQLI_ASSOC) : [];
-                    if (!empty($r_sales_rows)):
-                      foreach ($r_sales_rows as $s):
-                        $sku_esc = $conn->real_escape_string($s['transaction_id']);
-                        // Fetch sale items with product names for details view
-                        $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.transaction_id='$sku_esc'");
-                        $sku_list = [];
-                        $items_array = [];
-                        if ($items_res) {
-                          while ($it = $items_res->fetch_assoc()) { 
-                            $sku_list[] = $it['sku'];
-                            $items_array[] = $it;
-                          }
-                        }
-                        $order_id_display = implode(', ', $sku_list);
-                        // Prepare details payload including conditional wallet fields (if present in DB)
-                        $details = $s;
-                        $details['items'] = $items_array;
-                        ?>
-                        <tr>
-                          <td><span style="font-family:monospace; font-size:12px; color:var(--chestnut); font-weight:600;"><?= htmlspecialchars($order_id_display, ENT_QUOTES, 'UTF-8') ?></span></td>
-                          <td style="color:var(--text-3); font-size:12px;"><?= date('d M Y, h:i A', strtotime($s['sale_date'])) ?></td>
+                   <?php $r_sales_rows = $r_sales ? $r_sales->fetch_all(MYSQLI_ASSOC) : [];
+if (!empty($r_sales_rows)):
+  foreach ($r_sales_rows as $s):
+    $sku_esc = $conn->real_escape_string($s['transaction_id']);
+    // Fetch sale items with product names for details view
+    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.transaction_id='$sku_esc'");
+    $items_array = [];
+    if ($items_res) {
+      while ($it = $items_res->fetch_assoc()) {
+        $items_array[] = $it;
+      }
+    }
+    // ── Order ID = same value the Checkout page shows: #1000 + nth completed sale of that day
+    $sale_day_esc  = $conn->real_escape_string(date('Y-m-d', strtotime($s['sale_date'])));
+    $sale_date_esc = $conn->real_escape_string($s['sale_date']);
+    $txn_esc       = $conn->real_escape_string($s['transaction_id']);
+    $pos_row = $conn->query("SELECT COUNT(*) as n FROM sales WHERE DATE(sale_date)='$sale_day_esc' AND status='Completed' AND (sale_date < '$sale_date_esc' OR (sale_date = '$sale_date_esc' AND transaction_id <= '$txn_esc'))")->fetch_assoc();
+    $order_id_display = '#' . (1000 + (int)($pos_row ? $pos_row['n'] : 1));
+    // Prepare details payload including conditional wallet fields (if present in DB)
+    $details = $s;
+    $details['items'] = $items_array;
+    ?>
+    <tr>
+      <td><span style="font-family:monospace; font-size:12px; color:var(--chestnut); font-weight:600;"><?= htmlspecialchars($order_id_display, ENT_QUOTES, 'UTF-8') ?></span></td>
+ <td style="color:var(--text-3); font-size:12px;"><?= date('d M Y, h:i A', strtotime($s['sale_date'])) ?></td>
                           <td style="font-weight:500;"><?= htmlspecialchars($s['cashier'] ?? '&#8212;', ENT_QUOTES, 'UTF-8') ?></td>
                           <td><span class="badge badge-gray"><?= htmlspecialchars($s['payment_method'], ENT_QUOTES, 'UTF-8') ?></span></td>
                           <td style="font-weight:700; color:var(--espresso);">&#8369;<?= number_format($s['total_amount'], 2) ?></td>
