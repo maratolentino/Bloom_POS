@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: May 13, 2026 at 11:15 AM
+-- Generation Time: May 21, 2026 at 05:48 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -50,15 +50,38 @@ CREATE TABLE `customers` (
   `full_name` varchar(150) NOT NULL,
   `contact_info` varchar(150) DEFAULT NULL,
   `photo_url` varchar(255) DEFAULT NULL,
-  `loyalty_points` int(11) NOT NULL DEFAULT 0
+  `loyalty_points` int(11) NOT NULL DEFAULT 0,
+  `member_since` datetime DEFAULT NULL,
+  `contact_email` varchar(255) DEFAULT NULL,
+  `contact_number` varchar(32) DEFAULT NULL,
+  `approved` tinyint(1) NOT NULL DEFAULT 1,
+  `created_by` varchar(50) DEFAULT NULL,
+  `approved_by` varchar(50) DEFAULT NULL,
+  `approved_at` datetime DEFAULT NULL,
+  `rejection_reason` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `customers`
 --
 
-INSERT INTO `customers` (`customer_id`, `full_name`, `contact_info`, `photo_url`, `loyalty_points`) VALUES
-(1, 'princes', 'trdftyhujiok', '', 0);
+INSERT INTO `customers` (`customer_id`, `full_name`, `contact_info`, `photo_url`, `loyalty_points`, `member_since`, `contact_email`, `contact_number`, `approved`, `created_by`, `approved_by`, `approved_at`, `rejection_reason`) VALUES
+(1, 'princes', 'trdftyhujiok', '', 0, NULL, NULL, NULL, 1, NULL, NULL, NULL, NULL);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `customer_approval_history`
+--
+
+CREATE TABLE `customer_approval_history` (
+  `id` int(11) NOT NULL,
+  `customer_id` int(11) NOT NULL,
+  `action` varchar(32) NOT NULL,
+  `by_employee_id` varchar(50) DEFAULT NULL,
+  `note` varchar(255) DEFAULT NULL,
+  `ts` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -102,9 +125,8 @@ CREATE TABLE `employees` (
 --
 
 INSERT INTO `employees` (`employee_id`, `full_name`, `role`, `job_role`, `passcode`, `photo_url`) VALUES
-('c001', 'Yunis', 'Cashier', 'Cashier', 'c001', 'uploads/1778595577_2_Quimio_Aila_Pic.jpg'),
-('emp00', 'MHIOT', 'Admin', 'Manager', '123', 'uploads/1778655825_bloomlogo.png'),
-('emp001', 'Aila Quimio', 'Admin', 'Manager', 'emp001', 'uploads/1778595646_9e9dfe52-3e8f-4f4e-89c5-f7cb6f312f9f.jpg');
+('EMP-001', 'Aila Quimio', 'Admin', 'Manager', 'emp001', ''),
+('EMP-002', 'kimi', 'Cashier', 'Cashier', 'emp002', '');
 
 -- --------------------------------------------------------
 
@@ -127,8 +149,7 @@ CREATE TABLE `inventory` (
 --
 
 INSERT INTO `inventory` (`sku`, `product_name`, `price`, `stock_qty`, `category_id`, `discount_id`, `image_url`) VALUES
-('l5', 'hi', 0.50, 8, NULL, NULL, ''),
-('rose', 'hi', 3500.00, 3, 1, NULL, '');
+('PR-001', 'Pink Roses', 2500.00, 1, 1, 1, '');
 
 -- --------------------------------------------------------
 
@@ -144,6 +165,9 @@ CREATE TABLE `sales` (
   `discount_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
   `payment_method` varchar(50) DEFAULT NULL,
   `amount_tendered` decimal(10,2) DEFAULT NULL,
+  `wallet_contact_number` varchar(50) DEFAULT NULL,
+  `wallet_account_name` varchar(150) DEFAULT NULL,
+  `wallet_proof_image_url` varchar(255) DEFAULT NULL,
   `status` varchar(30) NOT NULL DEFAULT 'Completed',
   `employee_id` varchar(50) DEFAULT NULL,
   `customer_id` int(11) DEFAULT NULL
@@ -153,9 +177,8 @@ CREATE TABLE `sales` (
 -- Dumping data for table `sales`
 --
 
-INSERT INTO `sales` (`transaction_id`, `sale_date`, `total_amount`, `tax_amount`, `discount_amount`, `payment_method`, `amount_tendered`, `status`, `employee_id`, `customer_id`) VALUES
-('TXN-C9721', '2026-05-13 15:21:08', 3920.56, 420.06, 0.00, '0', 0.00, 'Completed', 'c001', NULL),
-('TXN-EMP4740', '2026-05-13 15:09:36', 3920.00, 420.00, 0.00, '0', 0.00, 'Completed', 'emp001', NULL);
+INSERT INTO `sales` (`transaction_id`, `sale_date`, `total_amount`, `tax_amount`, `discount_amount`, `payment_method`, `amount_tendered`, `wallet_contact_number`, `wallet_account_name`, `wallet_proof_image_url`, `status`, `employee_id`, `customer_id`) VALUES
+('TXN-EMP3619', '2026-05-19 21:22:43', 2800.00, 300.00, 0.00, 'Cash', 0.00, NULL, NULL, NULL, 'Completed', NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -177,9 +200,7 @@ CREATE TABLE `sale_items` (
 --
 
 INSERT INTO `sale_items` (`id`, `transaction_id`, `sku`, `quantity`, `price_at_time`, `subtotal`) VALUES
-(2, 'TXN-EMP4740', 'rose', 1, 3500.00, 3500.00),
-(3, 'TXN-C9721', 'l5', 1, 0.50, 0.50),
-(4, 'TXN-C9721', 'rose', 1, 3500.00, 3500.00);
+(8, 'TXN-EMP3619', 'PR-001', 1, 2500.00, 2500.00);
 
 --
 -- Indexes for dumped tables
@@ -196,6 +217,12 @@ ALTER TABLE `categories`
 --
 ALTER TABLE `customers`
   ADD PRIMARY KEY (`customer_id`);
+
+--
+-- Indexes for table `customer_approval_history`
+--
+ALTER TABLE `customer_approval_history`
+  ADD PRIMARY KEY (`id`);
 
 --
 -- Indexes for table `discounts`
@@ -250,6 +277,12 @@ ALTER TABLE `customers`
   MODIFY `customer_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
+-- AUTO_INCREMENT for table `customer_approval_history`
+--
+ALTER TABLE `customer_approval_history`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `discounts`
 --
 ALTER TABLE `discounts`
@@ -259,7 +292,7 @@ ALTER TABLE `discounts`
 -- AUTO_INCREMENT for table `sale_items`
 --
 ALTER TABLE `sale_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- Constraints for dumped tables

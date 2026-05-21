@@ -277,15 +277,58 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
 
   $transaction_id = generateTransactionRef($employee_id);
 
+  // Handle wallet payment details
+  $wallet_contact = "";
+  $wallet_account = "";
+  $wallet_proof_url = "";
+  
+  if ($payment_method === "GCash" || $payment_method === "Maya") {
+    $wallet_contact = $conn->real_escape_string(isset($_POST["wallet_contact"]) ? $_POST["wallet_contact"] : "");
+    $wallet_account = $conn->real_escape_string(isset($_POST["wallet_account_name"]) ? $_POST["wallet_account_name"] : "");
+    
+    // Handle file upload
+    if (isset($_FILES["wallet_proof"]) && $_FILES["wallet_proof"]["error"] === UPLOAD_ERR_OK) {
+      $upload_dir = "uploads/wallet_proofs/";
+      if (!is_dir($upload_dir)) {
+        mkdir($upload_dir, 0755, true);
+      }
+      
+      $file_ext = pathinfo($_FILES["wallet_proof"]["name"], PATHINFO_EXTENSION);
+      $filename = $transaction_id . "_" . time() . "." . $file_ext;
+      $filepath = $upload_dir . $filename;
+      
+      if (move_uploaded_file($_FILES["wallet_proof"]["tmp_name"], $filepath)) {
+        $wallet_proof_url = $filepath;
+      }
+    }
+  }
+
   $cart_subtotal = 0;
   for ($i = 0; $i < count($cart_data); $i++) {
     $cart_subtotal += $cart_data[$i]["price"] * $cart_data[$i]["qty"];
   }
   $saleCalc      = calcSaleTotal($cart_subtotal, $discount_amount);
 
-  $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,'Completed',?,?)");
-  $stmt->bind_param("ssdddsdsi", $transaction_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $employee_id, $customer_id);
-  if ($stmt->execute()) {
+  // Detect whether wallet columns exist in sales table to avoid SQL errors
+  $hasWalletCols = false;
+  $colCheck = $conn->query("SHOW COLUMNS FROM sales LIKE 'wallet_contact_number'");
+  if ($colCheck && $colCheck->num_rows > 0) {
+    $hasWalletCols = true;
+  }
+
+  if ($hasWalletCols) {
+    $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+    if ($stmt) {
+      $stmt->bind_param("ssdddsdssssi", $transaction_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $employee_id, $customer_id);
+    }
+  } else {
+    $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,'Completed',?,?)");
+    if ($stmt) {
+      $stmt->bind_param("ssdddsdsi", $transaction_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $employee_id, $customer_id);
+    }
+  }
+
+  if ($stmt && $stmt->execute()) {
     foreach ($cart_data as $item) {
       $sku   = $conn->real_escape_string($item["sku"]);
       $qty   = (int)$item["qty"];
@@ -2708,7 +2751,7 @@ function factorial(int $n): int
           <span class="modal-title">Complete Payment</span>
           <button class="modal-close" onclick="closePayModal()">&times;</button>
         </div>
-        <form method="POST" action="?page=checkout" id="sale_form">
+        <form method="POST" action="?page=checkout" id="sale_form" enctype="multipart/form-data">
           <input type="hidden" name="finalize_sale" value="1">
           <input type="hidden" name="cart_json" id="f_cart">
           <input type="hidden" name="final_total" id="f_total">
@@ -2738,10 +2781,10 @@ function factorial(int $n): int
             <div>
               <div class="form-group">
                 <label>Payment Method</label>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">
-                  <?php foreach (['Cash', 'Card', 'GCash', 'Maya'] as $pm): ?>
-                    <label style="display:flex; align-items:center; gap:8px; padding:10px 14px; border:1.5px solid var(--taupe); border-radius:var(--radius); cursor:pointer; font-size:13px; color:var(--text);">
-                      <input type="radio" name="payment_method" value="<?= $pm ?>" <?= $pm === 'Cash' ? 'checked' : '' ?> onchange="toggleCashField(<?= $pm === 'Cash' ? 'true' : 'false' ?>)"> <?= $pm ?>
+                <div style="display:flex; gap:8px; margin-top:6px;">
+                  <?php foreach (['Cash', 'GCash', 'Maya'] as $pm): ?>
+                    <label style="display:flex; align-items:center; gap:8px; padding:10px 14px; border:1.5px solid var(--taupe); border-radius:var(--radius); cursor:pointer; flex:1; font-size:13px; color:var(--text);">
+                      <input type="radio" name="payment_method" value="<?= $pm ?>" <?= $pm === 'Cash' ? 'checked' : '' ?> onchange="handlePaymentMethodChange(this.value)"> <?= $pm ?>
                     </label>
                   <?php endforeach; ?>
                 </div>
@@ -2750,11 +2793,26 @@ function factorial(int $n): int
                 <label>Amount Received</label>
                 <input type="text" name="amount_tendered" id="amount_tendered" placeholder="0.00" oninput="fmtCash(this); calcChange();">
               </div>
+              <div id="digital_wallet_area" style="display:none;">
+                <div class="form-group">
+                  <label>Contact Number <span style="color:var(--red);">*</span></label>
+                  <input type="text" id="wallet_contact" name="wallet_contact" placeholder="e.g., 09123456789">
+                </div>
+                <div class="form-group">
+                  <label>Account Name <span style="color:var(--red);">*</span></label>
+                  <input type="text" id="wallet_account_name" name="wallet_account_name" placeholder="Account holder name">
+                </div>
+                <div class="form-group">
+                  <label>Reference/Transaction Proof <span style="color:var(--red);">*</span></label>
+                  <input type="file" id="wallet_proof" name="wallet_proof" accept="image/*">
+                </div>
+              </div>
+              <div id="payment_error" style="display:none; background:var(--red-l); border:1px solid var(--red); border-radius:var(--radius); padding:12px; margin-bottom:16px; color:var(--red); font-size:13px; font-weight:600;" role="alert"></div>
               <div style="background:var(--taupe-l); border-radius:var(--radius); padding:14px 16px; margin-bottom:16px; border:1px solid var(--taupe);">
                 <div style="font-size:11px; color:var(--chestnut-d); text-transform:uppercase; letter-spacing:.06em; font-weight:700; margin-bottom:4px;">Total Due</div>
                 <div id="modal_total" style="font-size:28px; font-weight:800; color:var(--chestnut);">&#8369;0.00</div>
               </div>
-              <button type="submit" class="btn btn-primary btn-full btn-lg">Confirm &amp; Complete Sale</button>
+              <button type="submit" id="submit_sale_btn" class="btn btn-primary btn-full btn-lg" style="position:relative; z-index:10000; pointer-events:auto; outline: 2px solid rgba(255,0,0,0);">Confirm &amp; Complete Sale</button>
             </div>
           </div>
         </form>
@@ -3139,21 +3197,69 @@ function factorial(int $n): int
           });
         }
         saleForm.addEventListener('submit', function(e) {
-          const pm = document.querySelector('input[name="payment_method"]:checked');
-          if (pm && pm.value === 'Cash') {
+          e.preventDefault();
+          (async function() {
+            const pm = document.querySelector('input[name="payment_method"]:checked');
             const tenderedField = document.getElementById('amount_tendered');
+            const totalDue = parseFloat(document.getElementById('f_total').value) || 0;
             const tenderedVal = parseFloat((tenderedField.value || '0').replace(/,/g, '')) || 0;
-            if (tenderedVal <= 0) {
-              e.preventDefault();
-              tenderedField.setCustomValidity('Please enter the Amount Received');
-              tenderedField.reportValidity();
-              tenderedField.focus();
-              return;
+
+            // Client-side validation
+            if (pm && pm.value === 'Cash') {
+              if (tenderedVal <= 0) {
+                tenderedField.setCustomValidity('Please enter the Amount Received');
+                tenderedField.reportValidity();
+                tenderedField.focus();
+                return;
+              }
+              if (tenderedVal < totalDue) {
+                const shortage = (totalDue - tenderedVal).toLocaleString(undefined, { minimumFractionDigits: 2 });
+                tenderedField.setCustomValidity('Amount received must be at least ₱' + totalDue.toLocaleString(undefined, { minimumFractionDigits: 2 }) + ' (short by ₱' + shortage + ')');
+                tenderedField.reportValidity();
+                tenderedField.focus();
+                return;
+              }
+              tenderedField.setCustomValidity('');
+            } else if (pm && (pm.value === 'GCash' || pm.value === 'Maya')) {
+              const contactEl = document.getElementById('wallet_contact');
+              const accountEl = document.getElementById('wallet_account_name');
+              const proofEl = document.getElementById('wallet_proof');
+              const contact = (contactEl.value || '').trim();
+              const account = (accountEl.value || '').trim();
+              const proof = proofEl.files.length > 0;
+              if (!contact) { contactEl.setCustomValidity('Please enter Contact Number'); contactEl.reportValidity(); contactEl.focus(); return; }
+              if (!account) { accountEl.setCustomValidity('Please enter Account Name'); accountEl.reportValidity(); accountEl.focus(); return; }
+              if (!proof) { proofEl.setCustomValidity('Please upload Transaction Proof'); proofEl.reportValidity(); proofEl.focus(); return; }
             }
-            tenderedField.setCustomValidity('');
-          }
-          updateReceipt();
-          printReceiptAuto();
+
+            // Prepare FormData and send via fetch so we can reliably print first
+            try {
+              const fd = new FormData(saleForm);
+              // mark this request as AJAX so server could respond differently if needed
+              fd.append('_ajax', '1');
+
+              const resp = await fetch('?page=checkout', { method: 'POST', body: fd, credentials: 'same-origin' });
+              if (!resp.ok) {
+                toast('Failed to complete sale', 'red');
+                return;
+              }
+
+              // Update receipt and open print preview before navigating
+              updateReceipt();
+              printReceiptAuto();
+
+              // Navigate to server response URL (will include success query)
+              if (resp.url) {
+                window.location = resp.url;
+              } else {
+                // fallback: reload checkout page
+                window.location = '?page=checkout&success=1';
+              }
+            } catch (err) {
+              console.error('Checkout request failed', err);
+              toast('Error completing sale', 'red');
+            }
+          })();
         });
       }
 
@@ -3162,8 +3268,100 @@ function factorial(int $n): int
         calcTotals();
       }
 
-      function toggleCashField(show) {
-        document.getElementById('cash_area').style.display = show ? 'block' : 'none';
+      function handlePaymentMethodChange(method) {
+        const cashArea = document.getElementById('cash_area');
+        const walletArea = document.getElementById('digital_wallet_area');
+        const errorDiv = document.getElementById('payment_error');
+        
+        if (method === 'Cash') {
+          cashArea.style.display = 'block';
+          walletArea.style.display = 'none';
+          // Clear wallet fields
+          document.getElementById('wallet_contact').value = '';
+          document.getElementById('wallet_account_name').value = '';
+          document.getElementById('wallet_proof').value = '';
+        } else if (method === 'GCash' || method === 'Maya') {
+          cashArea.style.display = 'none';
+          walletArea.style.display = 'block';
+          // Clear cash field
+          document.getElementById('amount_tendered').value = '';
+          errorDiv.style.display = 'none';
+        }
+        
+        validatePaymentForm();
+      }
+      
+      function validatePaymentForm() {
+        const pm = document.querySelector('input[name="payment_method"]:checked');
+        let submitBtn = document.getElementById('submit_sale_btn');
+        const errorDiv = document.getElementById('payment_error');
+        if (!submitBtn) submitBtn = document.querySelector('button[type="submit"]#submit_sale_btn');
+        // default to enabled; we'll disable if validation fails
+        if (submitBtn) submitBtn.disabled = false;
+        
+        console.debug('validatePaymentForm:', { pm: pm ? pm.value : null });
+        if (pm && (pm.value === 'GCash' || pm.value === 'Maya')) {
+          // Validate digital wallet fields
+          const contactEl = document.getElementById('wallet_contact');
+          const accountEl = document.getElementById('wallet_account_name');
+          const proofEl = document.getElementById('wallet_proof');
+          const contact = (contactEl && (contactEl.value || '').trim()) || '';
+          const account = (accountEl && (accountEl.value || '').trim()) || '';
+          const proof = proofEl && proofEl.files && proofEl.files.length > 0;
+
+          // set required attributes appropriately
+          if (contactEl) contactEl.required = true;
+          if (accountEl) accountEl.required = true;
+          if (proofEl) proofEl.required = true;
+          const amtEl = document.getElementById('amount_tendered');
+          if (amtEl) amtEl.required = false;
+          
+          if (!contact || !account || !proof) {
+            console.debug('wallet validation failed', { contact, account, proof });
+            if (!contact) {
+              errorDiv.innerHTML = '⚠ Please enter Contact Number';
+              errorDiv.style.display = 'block';
+              return;
+            }
+            if (!account) {
+              errorDiv.innerHTML = '⚠ Please enter Account Name';
+              errorDiv.style.display = 'block';
+              return;
+            }
+            if (!proof) {
+              errorDiv.innerHTML = '⚠ Please upload Transaction Proof';
+              errorDiv.style.display = 'block';
+              return;
+            }
+          } else {
+            console.debug('wallet validation passed');
+            errorDiv.style.display = 'none';
+            console.debug('wallet validation passed');
+            // clear custom validity
+            if (contactEl) { contactEl.setCustomValidity(''); }
+            if (accountEl) { accountEl.setCustomValidity(''); }
+            if (proofEl) { proofEl.setCustomValidity(''); }
+          }
+        } else if (pm && pm.value === 'Cash') {
+          // Validate cash field
+          const tenderedEl = document.getElementById('amount_tendered');
+          if (tenderedEl) tenderedEl.required = true;
+          const tendered = parseFloat((document.getElementById('amount_tendered').value || '0').replace(/,/g, '')) || 0;
+          const total = parseFloat(document.getElementById('f_total').value) || 0;
+
+          if (tendered > 0 && tendered >= total) {
+            errorDiv.style.display = 'none';
+            console.debug('cash validation passed', { tendered, total });
+          } else if (tendered > 0 && tendered < total) {
+            console.debug('cash insufficient', { tendered, total });
+          } else {
+            console.debug('cash no tendered yet');
+          }
+        }
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          console.debug('submitBtn.disabled forced=false');
+        }
       }
 
       function fmtCash(el) {
@@ -3182,10 +3380,76 @@ function factorial(int $n): int
         const total = parseFloat(document.getElementById('f_total').value) || 0;
         const tendered = parseFloat((document.getElementById('amount_tendered').value || '0').replace(/,/g, '')) || 0;
         const change = tendered - total;
+        const paymentMethod = document.querySelector('input[name="payment_method"]:checked');
+        const isCash = paymentMethod && paymentMethod.value === 'Cash';
+        
+        // Update change display
         document.getElementById('r_change').innerHTML = change >= 0 ? '&#8369;' + change.toLocaleString(undefined, {
           minimumFractionDigits: 2
         }) : '&#8212;';
+        
+        // Validate and show/hide error for cash payments
+        const errorDiv = document.getElementById('payment_error');
+        const submitBtn = document.getElementById('submit_sale_btn');
+        
+        if (isCash) {
+          if (tendered > 0 && tendered < total) {
+            const shortage = (total - tendered).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            errorDiv.innerHTML = '⚠ Insufficient amount. Short by &#8369;' + shortage + '.';
+            errorDiv.style.display = 'block';
+            if (submitBtn) submitBtn.disabled = true;
+          } else if (tendered > 0 && tendered >= total) {
+            errorDiv.style.display = 'none';
+            if (submitBtn) submitBtn.disabled = false;
+          } else {
+            errorDiv.style.display = 'none';
+            if (submitBtn) submitBtn.disabled = false;
+          }
+        } else {
+          errorDiv.style.display = 'none';
+          if (submitBtn) submitBtn.disabled = false;
+        }
       }
+      
+      // Add event listeners for digital wallet fields
+      document.addEventListener('DOMContentLoaded', function() {
+        const walletContact = document.getElementById('wallet_contact');
+        const walletAccount = document.getElementById('wallet_account_name');
+        const walletProof = document.getElementById('wallet_proof');
+        const amountTendered = document.getElementById('amount_tendered');
+        const pmChecked = document.querySelector('input[name="payment_method"]:checked');
+        
+        if (walletContact) walletContact.addEventListener('input', validatePaymentForm);
+        if (walletAccount) walletAccount.addEventListener('input', validatePaymentForm);
+        if (walletProof) walletProof.addEventListener('change', validatePaymentForm);
+        if (amountTendered) amountTendered.addEventListener('input', function() { fmtCash(this); calcChange(); validatePaymentForm(); });
+
+        // Initialize payment form state on load
+        validatePaymentForm();
+        if (pmChecked) handlePaymentMethodChange(pmChecked.value);
+
+        // Debug: log submit button clicks and element at its center
+        const submitBtn = document.getElementById('submit_sale_btn');
+        if (submitBtn) {
+          submitBtn.addEventListener('click', function(evt) {
+            console.debug('submit button clicked - disabled=', this.disabled);
+            try {
+              const r = this.getBoundingClientRect();
+              const cx = Math.round(r.left + r.width/2);
+              const cy = Math.round(r.top + r.height/2);
+              const el = document.elementFromPoint(cx, cy);
+              console.debug('elementFromPoint at button center:', el, 'coords:', cx, cy);
+            } catch (err) { console.error('elemFromPoint error', err); }
+          });
+        }
+
+        // Debug: capture clicks on overlays to see if they intercept clicks
+        document.querySelectorAll('.overlay').forEach(o => {
+          o.addEventListener('click', function(e) {
+            console.debug('overlay clicked target:', e.target);
+          }, true);
+        });
+      });
 
       document.getElementById('sku_scanner').addEventListener('input', function() {
         const q = this.value.toLowerCase();
@@ -4571,6 +4835,7 @@ function factorial(int $n): int
                       <th>Payment</th>
                       <th>Amount</th>
                       <th>Status</th>
+                      <th style="text-align:center;">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4578,12 +4843,20 @@ function factorial(int $n): int
                     if (!empty($r_sales_rows)):
                       foreach ($r_sales_rows as $s):
                         $sku_esc = $conn->real_escape_string($s['transaction_id']);
-                        $sku_res = $conn->query("SELECT sku FROM sale_items WHERE transaction_id='$sku_esc'");
+                        // Fetch sale items with product names for details view
+                        $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.transaction_id='$sku_esc'");
                         $sku_list = [];
-                        if ($sku_res) {
-                          while ($sk = $sku_res->fetch_assoc()) { $sku_list[] = $sk['sku']; }
+                        $items_array = [];
+                        if ($items_res) {
+                          while ($it = $items_res->fetch_assoc()) { 
+                            $sku_list[] = $it['sku'];
+                            $items_array[] = $it;
+                          }
                         }
                         $order_id_display = implode(', ', $sku_list);
+                        // Prepare details payload including conditional wallet fields (if present in DB)
+                        $details = $s;
+                        $details['items'] = $items_array;
                         ?>
                         <tr>
                           <td><span style="font-family:monospace; font-size:12px; color:var(--chestnut); font-weight:600;"><?= htmlspecialchars($order_id_display, ENT_QUOTES, 'UTF-8') ?></span></td>
@@ -4592,11 +4865,12 @@ function factorial(int $n): int
                           <td><span class="badge badge-gray"><?= htmlspecialchars($s['payment_method'], ENT_QUOTES, 'UTF-8') ?></span></td>
                           <td style="font-weight:700; color:var(--espresso);">&#8369;<?= number_format($s['total_amount'], 2) ?></td>
                           <td><span class="badge <?= $s['status'] === 'Completed' ? 'badge-green' : 'badge-amber' ?>"><?= $s['status'] ?></span></td>
+                          <td style="text-align:center;"><button type="button" class="btn btn-sm btn-secondary" onclick="viewTransactionDetails(<?= htmlspecialchars(json_encode($details), ENT_QUOTES, 'UTF-8') ?>)" style="padding:6px 12px; font-size:12px;">View Details</button></td>
                         </tr>
                       <?php endforeach;
                     else: ?>
                       <tr>
-                        <td colspan="6" style="text-align:center; color:var(--text-3); padding:28px;">No transactions for this period.</td>
+                        <td colspan="7" style="text-align:center; color:var(--text-3); padding:28px;">No transactions for this period.</td>
                       </tr>
                     <?php endif; ?>
                   </tbody>
@@ -4611,6 +4885,98 @@ function factorial(int $n): int
     </div>
 
   <?php endif; ?>
+
+  <!-- Transaction Details Modal -->
+  <div class="overlay" id="transactionDetailModal">
+    <div class="modal-box" style="max-width:720px;">
+      <div class="modal-header">
+        <span class="modal-title">Transaction Details</span>
+        <button class="modal-close" type="button" onclick="closeTransactionModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px;">
+        <div class="receipt" id="td_receipt" style="max-width:100%;">
+          <div class="receipt-title">Bloom POS - Transaction</div>
+          <div id="td_meta" style="font-size:12px;color:var(--text-3);margin-bottom:8px;"></div>
+          <hr class="receipt-sep">
+          <div id="td_items"></div>
+          <hr class="receipt-sep">
+          <div class="receipt-row"><span>Total Due</span><span id="td_total">&#8369;0.00</span></div>
+          <div class="receipt-row" id="td_amount_received_row" style="display:none;"><span>Amount Received</span><span id="td_amount_received">&#8369;0.00</span></div>
+          <div class="receipt-row" id="td_change_row" style="display:none;"><span>Change</span><span id="td_change">&#8369;0.00</span></div>
+          <div id="td_wallet_area" style="display:none;margin-top:12px;">
+            <div class="receipt-row"><span>Contact Number</span><span id="td_wallet_contact">&#8212;</span></div>
+            <div class="receipt-row"><span>Account Name</span><span id="td_wallet_account">&#8212;</span></div>
+            <div style="margin-top:8px;"><a id="td_proof_link" href="#" target="_blank"><img id="td_proof_img" src="" alt="Proof" style="max-width:160px; border-radius:6px; border:1px solid #ddd; display:none;"></a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function viewTransactionDetails(details) {
+      try {
+        // details is an object passed from PHP
+        const d = details || {};
+        const metaEl = document.getElementById('td_meta');
+        metaEl.textContent = (d.transaction_id ? ('Transaction: ' + d.transaction_id + ' · ') : '') + (d.sale_date ? new Date(d.sale_date).toLocaleString() : '');
+
+        const itemsEl = document.getElementById('td_items');
+        itemsEl.innerHTML = '';
+        if (Array.isArray(d.items) && d.items.length) {
+          d.items.forEach(it => {
+            const name = it.product_name && it.product_name !== '' ? it.product_name : it.sku;
+            const qty = parseInt(it.quantity || 0, 10) || 0;
+            const subtotal = parseFloat(it.subtotal || 0) || 0;
+            const row = `<div class="receipt-row"><span>${qty}× ${name}</span><span>&#8369;${subtotal.toFixed(2)}</span></div>`;
+            itemsEl.insertAdjacentHTML('beforeend', row);
+          });
+        }
+
+        document.getElementById('td_total').textContent = '\u20B1' + (parseFloat(d.total_amount || 0).toFixed(2));
+
+        if ((d.payment_method || '').toLowerCase() === 'cash') {
+          // Show amount received and change
+          document.getElementById('td_wallet_area').style.display = 'none';
+          document.getElementById('td_amount_received_row').style.display = 'block';
+          document.getElementById('td_change_row').style.display = 'block';
+          const amt = parseFloat(d.amount_tendered || d.amountReceived || 0) || 0;
+          document.getElementById('td_amount_received').textContent = '\u20B1' + amt.toFixed(2);
+          const change = amt - (parseFloat(d.total_amount || 0) || 0);
+          document.getElementById('td_change').textContent = '\u20B1' + (change >= 0 ? change.toFixed(2) : '0.00');
+        } else {
+          // Digital wallet: show wallet fields
+          document.getElementById('td_amount_received_row').style.display = 'none';
+          document.getElementById('td_change_row').style.display = 'none';
+          document.getElementById('td_wallet_area').style.display = 'block';
+          document.getElementById('td_wallet_contact').textContent = d.wallet_contact_number || d.wallet_contact || d.wallet_contact_number || '—';
+          document.getElementById('td_wallet_account').textContent = d.wallet_account_name || d.wallet_account || '—';
+          const proof = d.wallet_proof_image_url || d.wallet_proof_url || '';
+          const img = document.getElementById('td_proof_img');
+          const link = document.getElementById('td_proof_link');
+          if (proof) {
+            img.src = proof;
+            img.style.display = 'inline-block';
+            link.href = proof;
+          } else {
+            img.style.display = 'none';
+            link.href = '#';
+          }
+        }
+
+        const overlay = document.getElementById('transactionDetailModal');
+        if (overlay) overlay.classList.add('open');
+      } catch (err) {
+        console.error('viewTransactionDetails error', err);
+      }
+    }
+
+    function closeTransactionModal() {
+      const el = document.getElementById('transactionDetailModal');
+      if (el) el.classList.remove('open');
+    }
+  </script>
+
 </body>
 
 </html>
