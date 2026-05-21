@@ -1,221 +1,134 @@
 <?php
 /**
- * session.php - POS System Session Handler
- * Manages user sessions for the entire server/application
- * Session timeout applies to the whole server session
+ * session.php - simplified session helpers focused on shopping cart
+ * This file no longer manages employee login or server-wide timeouts.
+ * It provides a small API for manipulating a cart stored in $_SESSION['cart'].
  */
 
-// Server-wide session timeout (1 hour = 3600 seconds)
-define('SESSION_TIMEOUT', 3600);
-
-/**
- * Initialize user session on login
- */
-function initializeSession($employee_id, $full_name, $role, $photo_url = '') {
-    $_SESSION['user_id']       = $employee_id;
-    $_SESSION['user_name']     = $full_name;
-    $_SESSION['user_role']     = $role;
-    $_SESSION['user_photo']    = $photo_url;
-    $_SESSION['login_time']    = date("Y-m-d H:i:s");
-    $_SESSION['login_timestamp'] = time(); // For timeout tracking
-}
-
-/**
- * Check if user is logged in and session is valid
- */
-function isLoggedIn() {
-    return isset($_SESSION['user_id']) && !isSessionExpired(); // Check if session has expired
-}
-
-/**
- * Check if session has expired
- */
-function isSessionExpired() {
-    if (!isset($_SESSION['login_timestamp'])) {
-        return true;
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    // Remove any leftover default-named PHPSESSID cookie so only BLOOMSESSID is used
+    if (!headers_sent() && isset($_COOKIE['PHPSESSID'])) {
+        setcookie('PHPSESSID', '', time() - 3600, '/');
+        unset($_COOKIE['PHPSESSID']);
     }
-    
-    $current_time = time();
-    $session_duration = $current_time - $_SESSION['login_timestamp'];
-    
-    return $session_duration > SESSION_TIMEOUT;
+
+    // Use a fixed session name and explicit cookie params to avoid path/domain issues
+    if (!headers_sent()) {
+        session_name('BLOOMSESSID');
+        session_set_cookie_params([
+            'lifetime' => 0,
+            'path' => '/',
+            'domain' => '',
+            'secure' => false,
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ]);
+    }
+    session_start();
 }
 
 /**
- * Refresh session timeout (keep user logged in)
+ * Return the full cart array (sku => qty)
  */
-function refreshSession() {
-    if (isLoggedIn()) {
-        $_SESSION['login_timestamp'] = time();
+function cart_get() {
+    return isset($_SESSION['cart']) ? $_SESSION['cart'] : array();
+}
+
+/**
+ * Add quantity to a SKU in the cart (increments). If resulting qty <= 0, removes it.
+ */
+function cart_add($sku, $qty = 1) {
+    $sku = (string)$sku;
+    $qty = (int)$qty;
+    if ($qty === 0) return true;
+    if (!isset($_SESSION['cart'])) $_SESSION['cart'] = array();
+    if (!isset($_SESSION['cart'][$sku])) $_SESSION['cart'][$sku] = 0;
+    $_SESSION['cart'][$sku] += $qty;
+    if ($_SESSION['cart'][$sku] <= 0) unset($_SESSION['cart'][$sku]);
+    return true;
+}
+
+/**
+ * Set exact quantity for a SKU. If qty <= 0 the SKU is removed.
+ */
+function cart_set($sku, $qty) {
+    $sku = (string)$sku;
+    $qty = (int)$qty;
+    if ($qty > 0) {
+        if (!isset($_SESSION['cart'])) $_SESSION['cart'] = array();
+        $_SESSION['cart'][$sku] = $qty;
+    } else {
+        if (isset($_SESSION['cart'][$sku])) unset($_SESSION['cart'][$sku]);
+    }
+    return true;
+}
+
+/**
+ * Remove a SKU from the cart
+ */
+function cart_remove($sku) {
+    $sku = (string)$sku;
+    if (isset($_SESSION['cart'][$sku])) {
+        unset($_SESSION['cart'][$sku]);
         return true;
     }
     return false;
 }
 
 /**
- * Get user session data
+ * Clear the entire cart
  */
-function getUserData() {
-    if (isLoggedIn()) {
-        return array(
-            'user_id'    => $_SESSION['user_id'],
-            'user_name'  => $_SESSION['user_name'],
-            'user_role'  => $_SESSION['user_role'],
-            'user_photo' => $_SESSION['user_photo'],
-            'login_time' => $_SESSION['login_time']
-        );
-    }
-    return null;
+function cart_clear() {
+    unset($_SESSION['cart']);
+    return true;
 }
 
 /**
- * Destroy session completely (logout)
+ * Return total number of items (sum of quantities)
+ */
+function cart_count_items() {
+    $sum = 0;
+    foreach (cart_get() as $q) $sum += (int)$q;
+    return $sum;
+}
+
+/**
+ * Optionally compute cart amount given a DB connection and inventory table prices
+ * $conn is optional; if provided this will sum price * qty for SKUs found in inventory.
+ */
+function cart_total_amount($conn = null) {
+    $cart = cart_get();
+    if (empty($cart) || $conn === null) return 0.0;
+    $skus = array_keys($cart);
+    $placeholders = implode(',', array_fill(0, count($skus), '?'));
+    $types = str_repeat('s', count($skus));
+    $stmt = $conn->prepare("SELECT sku, price FROM inventory WHERE sku IN ($placeholders)");
+    if (!$stmt) return 0.0;
+    $stmt->bind_param($types, ...$skus);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $total = 0.0;
+    while ($r = $res->fetch_assoc()) {
+        $sku = $r['sku'];
+        $price = floatval($r['price']);
+        $qty = isset($cart[$sku]) ? (int)$cart[$sku] : 0;
+        $total += $price * $qty;
+    }
+    return $total;
+}
+
+/**
+ * Backwards-compatible destroySession (clears session data)
  */
 function destroySession() {
     $_SESSION = array();
-    
-    if (ini_get("session.use_cookies")) {
+    if (ini_get('session.use_cookies')) {
         $params = session_get_cookie_params();
         setcookie(session_name(), '', time() - 42000,
-            $params["path"], $params["domain"],
-            $params["secure"], $params["httponly"]
+            $params['path'], $params['domain'], $params['secure'], $params['httponly']
         );
     }
-    
     session_destroy();
-}
-
-/**
- * Initialize transaction data for current POS transaction
- */
-function initializeTransactionSession() {
-    $_SESSION['current_transaction'] = array(
-        'transaction_id'   => uniqid('TXN-', true),
-        'start_time'       => date("Y-m-d H:i:s"), //date() to store transaction start time
-        'items'            => array(),
-        'total_amount'     => 0.00,
-        'discount_amount'  => 0.00,
-        'tax_amount'       => 0.00,
-        'payment_method'   => '',
-        'status'           => 'active'
-    );
-}
-
-/**
- * Add item to current transaction
- */
-function addItemToTransaction($product_id, $product_name, $quantity, $unit_price, $category) {
-    if (!isset($_SESSION['current_transaction'])) {
-        initializeTransactionSession();
-    }
-    
-    $item = array(
-        'product_id'   => $product_id,
-        'product_name' => $product_name,
-        'quantity'     => $quantity,
-        'unit_price'   => $unit_price,
-        'category'     => $category,
-        'subtotal'     => $quantity * $unit_price,
-        'added_time'   => date("Y-m-d H:i:s")
-    );
-    
-    $_SESSION['current_transaction']['items'][] = $item;
-    updateTransactionTotals();
-    
-    return true;
-}
-
-/**
- * Remove item from current transaction by index
- */
-function removeItemFromTransaction($item_index) {
-    if (isset($_SESSION['current_transaction']['items'][$item_index])) {
-        unset($_SESSION['current_transaction']['items'][$item_index]);
-        $_SESSION['current_transaction']['items'] = array_values($_SESSION['current_transaction']['items']);
-        updateTransactionTotals();
-        return true;
-    }
-    return false;
-}
-
-/**
- * Update item quantity in current transaction
- */
-function updateItemQuantity($item_index, $new_quantity) {
-    if (isset($_SESSION['current_transaction']['items'][$item_index])) {
-        $item = &$_SESSION['current_transaction']['items'][$item_index];
-        $item['quantity'] = $new_quantity;
-        $item['subtotal'] = $new_quantity * $item['unit_price'];
-        updateTransactionTotals();
-        return true;
-    }
-    return false;
-}
-
-/**
- * Clear all items from current transaction
- */
-function clearTransactionItems() {
-    $_SESSION['current_transaction']['items'] = array();
-    updateTransactionTotals();
-}
-
-/**
- * Update transaction totals (subtotal, tax, total)
- */
-function updateTransactionTotals() {
-    if (!isset($_SESSION['current_transaction'])) {
-        return;
-    }
-     
-    $subtotal = 0;
-    foreach ($_SESSION['current_transaction']['items'] as $item) {
-        $subtotal += $item['subtotal'];
-    }
-    
-    $_SESSION['current_transaction']['total_amount'] = $subtotal;
-    
-    // Tax calculation (12% tax rate)
-    $tax_rate = 0.12;
-    $_SESSION['current_transaction']['tax_amount'] = $subtotal * $tax_rate;
-}
-
-/**
- * Complete current transaction
- */
-function completeTransaction($payment_method = '') {
-    if (!isset($_SESSION['current_transaction'])) {
-        return false;
-    }
-    
-    $_SESSION['current_transaction']['status'] = 'completed';
-    $_SESSION['current_transaction']['payment_method'] = $payment_method;
-    $_SESSION['current_transaction']['completion_time'] = date("Y-m-d H:i:s");
-    
-    // Store completed transaction in history
-    if (!isset($_SESSION['transaction_history'])) {
-        $_SESSION['transaction_history'] = array();
-    }
-    $_SESSION['transaction_history'][] = $_SESSION['current_transaction'];
-    
-    // Initialize new transaction for next sale
-    initializeTransactionSession();
-    
-    return true;
-}
-
-/**
- * Get current transaction data
- */
-function getCurrentTransaction() {
-    return isset($_SESSION['current_transaction']) ? $_SESSION['current_transaction'] : null;
-}
-
-/**
- * Get transaction history for session
- */
-function getTransactionHistory() {
-    return isset($_SESSION['transaction_history']) ? $_SESSION['transaction_history'] : array();
 }
 
 ?>

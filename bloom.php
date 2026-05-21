@@ -1,53 +1,73 @@
 <?php
-session_start();
 
-// Include session handler
+// Include session handler (cart helper functions)
 require_once 'session.php';
 
-// ── Cookies: Remember Me ─────────────────────────────────────
-$remembered_id = isset($_COOKIE['bloom_remember_id']) //isset() check to prevent undefined index notice if cookie doesn't exist
-  ? htmlspecialchars($_COOKIE['bloom_remember_id'], ENT_QUOTES, 'UTF-8')
-  : '';
-// ── Auto-create uploads folder ───────────────────────────────
-if (!is_dir("uploads")) {
-  mkdir("uploads", 0777, true);
-}
-
-date_default_timezone_set("Asia/Manila"); // Set timezone to Manila
-
+// ── Basic setup
+$remembered_id = isset($_COOKIE['bloom_remember_id']) ? htmlspecialchars($_COOKIE['bloom_remember_id'], ENT_QUOTES, 'UTF-8') : '';
+if (!is_dir("uploads")) mkdir("uploads", 0777, true);
+date_default_timezone_set("Asia/Manila");
 require_once __DIR__ . '/Inventory.inc.php';
-
-$sampleProducts = [
-  'flowers'     => new FlowerProduct('FLW-001', 'Red Roses', 99.00, 50),
-  'arrangement' => new ArrangementProduct('ARR-001', 'Bridal Bouquet', 599.00, 10),
-  'plant'       => new PlantProduct('PLT-001', 'Peace Lily', 199.00, 25),
-  'accessory'   => new AccessoryProduct('ACC-001', 'Crystal Vase', 349.00, 15),
-];
-// echo $sampleProducts['flowers']; → "Red Roses (FLW-001) - ₱99.00 | Stock: 50 [Flowers]"
-
 $auth_error = "";
-$reg_error  = "";
-
-// ── Array ────────────────────────────────────────────────────
-$store_info = array( // associative array for store details
-  "name"     => "Bloom POS",
-  "address"  => "Calamba, Laguna",
-  "contact"  => "0912-345-6789",
-  "tax_rate" => 0.12
-);
-// str_getcsv() — parse a CSV string of accepted payment methods into an array
+$reg_error = "";
+$store_info = array("name"=>"Bloom POS","address"=>"Calamba, Laguna","contact"=>"0912-345-6789","tax_rate"=>0.12);
 $accepted_payments = str_getcsv("Cash,GCash,Maya,Credit/Debit Card");
-$paymentsRef       = &$accepted_payments;           // Reference variable (from index.php)
-$paymentKeys       = array_keys($accepted_payments); // array_keys() from index.php
-
-// ── Route ────────────────────────────────────────────────────
+$paymentsRef = &$accepted_payments;
+$paymentKeys = array_keys($accepted_payments);
 $page = isset($_GET["page"]) ? $_GET["page"] : "login";
-echo "<!-- [Event] page=' " . htmlspecialchars($page, ENT_QUOTES, 'UTF-8') . "' -->\n";
 
-// ── Database ─────────────────────────────────────────────────
+// Database connection
 $conn = new mysqli('127.0.0.1', 'root', '', 'bloom_pos');
 if ($conn->connect_error) {
-  echo "DB connection failed: " . $conn->connect_error;
+  header('Content-Type: application/json');
+  echo json_encode(['status'=>'error','message'=>'DB connection failed: '.$conn->connect_error]);
+  exit;
+}
+
+// ── Cart AJAX endpoints (must run before any page output)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
+  header('Content-Type: application/json');
+  try {
+    $act = $_POST['cart_action'];
+    if ($act === 'add') {
+      $sku = isset($_POST['sku']) ? $_POST['sku'] : '';
+      $qty = isset($_POST['qty']) ? (int)$_POST['qty'] : 1;
+      cart_add($sku, $qty);
+      header('X-Session-Id: ' . session_id());
+      echo json_encode(['status'=>'ok','cart'=>cart_get(),'count'=>cart_count_items()]);
+      exit;
+    }
+    if ($act === 'set') {
+      $sku = isset($_POST['sku']) ? $_POST['sku'] : '';
+      $qty = isset($_POST['qty']) ? (int)$_POST['qty'] : 0;
+      cart_set($sku, $qty);
+      header('X-Session-Id: ' . session_id());
+      echo json_encode(['status'=>'ok','cart'=>cart_get(),'count'=>cart_count_items()]);
+      exit;
+    }
+    if ($act === 'remove') {
+      $sku = isset($_POST['sku']) ? $_POST['sku'] : '';
+      cart_remove($sku);
+      header('X-Session-Id: ' . session_id());
+      echo json_encode(['status'=>'ok','cart'=>cart_get(),'count'=>cart_count_items()]);
+      exit;
+    }
+    if ($act === 'clear') {
+      cart_clear();
+      header('X-Session-Id: ' . session_id());
+      echo json_encode(['status'=>'ok','cart'=>[],'count'=>0]);
+      exit;
+    }
+  } catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+    exit;
+  }
+}
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_cart'])) {
+  header('Content-Type: application/json');
+  header('X-Session-Id: ' . session_id());
+  echo json_encode(['cart'=>cart_get(),'count'=>cart_count_items()]);
   exit;
 }
 
@@ -94,27 +114,15 @@ if ($historyCheck && $historyCheck->num_rows === 0) {
   $conn->query("CREATE TABLE customer_approval_history (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, customer_id INT NOT NULL, action VARCHAR(32) NOT NULL, by_employee_id VARCHAR(50) NULL, note VARCHAR(255) NULL, ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
-if (!isLoggedIn() && $page !== "login") {
-  header("Location: ?page=login");
-  exit;
-}
-if (isLoggedIn() && $page === "login") {
-  header("Location: ?page=dashboard");
-  exit;
-}
-// Only Admins may access the Create Account (register) page
-if ($page === "register" && (!isLoggedIn() || $_SESSION["user_role"] !== "Admin")) {
-  header("Location: " . (isLoggedIn() ? "?page=dashboard" : "?page=login"));
-  exit;
-}
+// Simplified session model: no employee login/timeouts.
+// Ensure basic session keys exist and enable admin UI (remove access blocking).
+$_SESSION['user_id']   = $_SESSION['user_id'] ?? null;
+$_SESSION['user_name'] = $_SESSION['user_name'] ?? 'Cashier';
+$_SESSION['user_role'] = $_SESSION['user_role'] ?? 'Cashier';
+$_SESSION['user_photo'] = $_SESSION['user_photo'] ?? '';
+$is_admin = true; // allow access to admin pages in a loginless mode
 
-// ── RBAC ─────────────────────────────────────────────────────
-// Note: 'crm' is intentionally NOT restricted so Cashiers can access Customer module
-$restricted_to_admin = ["inventory", "employees", "reports"];
-if (isLoggedIn() && $_SESSION["user_role"] !== "Admin" && in_array($page, $restricted_to_admin)) {
-  header("Location: ?page=dashboard");
-  exit;
-}
+// (duplicate cart handlers removed — top-of-file handlers are used)
 
 // ── Login ─────────────────────────────────────────────────────
 if ($page === "login" && $_SERVER["REQUEST_METHOD"] === "POST") {
@@ -132,13 +140,11 @@ if ($page === "login" && $_SERVER["REQUEST_METHOD"] === "POST") {
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
     if ($row && strcmp($row["passcode"], $passcode) === 0) {  // strcmp() for exact string comparison of passcodes
-      // Initialize session on successful login
-      initializeSession(
-        $row["employee_id"],
-        $row["full_name"],
-        $row["role"],
-        isset($row["photo_url"]) ? $row["photo_url"] : ""
-      );
+      // Set minimal session values (login system removed)
+      $_SESSION['user_id'] = $row['employee_id'];
+      $_SESSION['user_name'] = $row['full_name'];
+      $_SESSION['user_role'] = $row['role'];
+      $_SESSION['user_photo'] = isset($row['photo_url']) ? $row['photo_url'] : '';
       header("Location: ?page=dashboard");
       exit;
     }
@@ -154,7 +160,7 @@ if ($page === "login" && $_SERVER["REQUEST_METHOD"] === "POST") {
 
 // ── Register ──────────────────────────────────────────────────
 
-if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && isLoggedIn() && $_SESSION["user_role"] === "Admin") {
+if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && $is_admin) {
   $emp_id   = isset($_POST["emp_id"])    ? trim($_POST["emp_id"])    : "";
   $name     = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : "";
   $role     = "Cashier"; // New accounts can only be Cashier; Admin creation via form is disabled
@@ -215,7 +221,7 @@ if ($page === "logout") {
 
 // ── Checkout – Finalize Sale ──────────────────────────────────
 // ── Self-Profile Update (any logged-in user) ─────────────────
-if (isLoggedIn() && isset($_POST["update_my_profile"])) {
+if (isset($_POST["update_my_profile"])) {
   $id           = $_SESSION["user_id"];
   $name         = isset($_POST["full_name"])    ? trim($_POST["full_name"])    : "";
   $new_passcode = isset($_POST["new_passcode"]) ? trim($_POST["new_passcode"]) : "";
@@ -2984,27 +2990,44 @@ function factorial(int $n): int
 
       window.addEventListener('DOMContentLoaded', initCustomerCombobox);
 
-      function addToCart(p) {
-        if (p.stock_qty <= 0) {
-          toast('Out of stock!', 'red');
-          return;
-        }
+      // Initialize cart from server-side session
+      (async function loadServerCart(){
+        try{
+          const res = await fetch(window.location.pathname + '?get_cart=1');
+          if (!res.ok) return;
+          const j = await res.json();
+          const srv = j.cart || {};
+          cart = Object.keys(srv).map(sku => {
+            const qty = parseInt(srv[sku],10) || 0;
+            const prod = allProducts.find(p => p.sku === sku) || null;
+            return prod ? { sku: sku, name: prod.product_name, price: parseFloat(prod.price), qty: qty, stock: prod.stock_qty } : null;
+          }).filter(Boolean);
+          renderCart();
+        }catch(e){}
+      })();
+
+      async function serverCartAction(action, sku, qty){
+        console.debug('serverCartAction', action, sku, qty);
+        const body = new URLSearchParams();
+        body.append('cart_action', action);
+        if (sku !== undefined) body.append('sku', sku);
+        if (qty !== undefined) body.append('qty', String(qty));
+        try{
+          const res = await fetch(window.location.pathname, { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() });
+          console.debug('serverCartAction response status', res.status);
+          if (!res.ok) return null;
+          return await res.json();
+        }catch(e){ return null; }
+      }
+
+      async function addToCart(p) {
+        console.debug('addToCart called', p);
+        if (p.stock_qty <= 0) { toast('Out of stock!', 'red'); return; }
+        const srv = await serverCartAction('add', p.sku, 1);
+        if (!srv || srv.status !== 'ok') { toast((srv && srv.message) ? srv.message : 'Cannot add item', 'red'); return; }
+        const qty = parseInt((srv.cart || {})[p.sku] || 0, 10);
         const ex = cart.find(i => i.sku === p.sku);
-        if (ex) {
-          if (ex.qty >= p.stock_qty) {
-            toast('Max stock reached', 'amber');
-            return;
-          }
-          ex.qty++;
-        } else {
-          cart.push({
-            sku: p.sku,
-            name: p.product_name,
-            price: parseFloat(p.price),
-            qty: 1,
-            stock: p.stock_qty
-          });
-        }
+        if (ex) ex.qty = qty; else cart.push({ sku: p.sku, name: p.product_name, price: parseFloat(p.price), qty: qty, stock: p.stock_qty });
         renderCart();
         toast(p.product_name + ' added');
       }
@@ -3038,29 +3061,31 @@ function factorial(int $n): int
         calcTotals();
       }
 
-      function chgQty(i, d) {
-        const newQty = cart[i].qty + d;
-        if (d > 0 && newQty > cart[i].stock) {
-          toast('Max stock reached', 'amber');
-          return;
-        }
-        if (newQty <= 0) {
-          cart.splice(i, 1);
-        } else {
-          cart[i].qty = newQty;
-        }
+      async function chgQty(i, d) {
+        const item = cart[i];
+        const newQty = item.qty + d;
+        if (d > 0 && newQty > item.stock) { toast('Max stock reached', 'amber'); return; }
+        const srv = await serverCartAction('set', item.sku, Math.max(0,newQty));
+        if (!srv || srv.status !== 'ok') { toast((srv && srv.message) ? srv.message : 'Cannot update cart', 'red'); return; }
+        const updatedQty = parseInt((srv.cart || {})[item.sku] || 0,10);
+        if (updatedQty <= 0) cart.splice(i,1); else cart[i].qty = updatedQty;
         renderCart();
       }
 
-      function rmItem(i) {
-        cart.splice(i, 1);
+      async function rmItem(i) {
+        const sku = cart[i].sku;
+        const srv = await serverCartAction('remove', sku, 0);
+        if (!srv || srv.status !== 'ok') { toast((srv && srv.message) ? srv.message : 'Cannot remove item', 'red'); return; }
+        cart.splice(i,1);
         renderCart();
       }
 
       function voidCart() {
         if (!cart.length) return;
-        showConfirm('Clear current basket?').then(function(ok) {
+        showConfirm('Clear current basket?').then(async function(ok) {
           if (ok) {
+            const srv = await serverCartAction('clear');
+            if (!srv || srv.status !== 'ok') { toast((srv && srv.message) ? srv.message : 'Cannot clear cart', 'red'); return; }
             cart = [];
             renderCart();
           }
@@ -3068,22 +3093,62 @@ function factorial(int $n): int
       }
 
       function holdSale() {
-        if (cart.length) {
-          sessionStorage.setItem('held_cart', JSON.stringify(cart));
+        if (!cart.length) { toast('Nothing to hold', 'amber'); return; }
+        // store cart plus currently selected customer so recall restores both
+        const payload = { cart: cart, customer: getSelectedCustomerValue() };
+        const held = JSON.stringify(payload);
+        // save locally first
+        sessionStorage.setItem('held_cart', held);
+        // clear server cart so cashier can start new transaction
+        (async function(){
+          const srv = await serverCartAction('clear');
+          if (!srv || srv.status !== 'ok') {
+            // restore local held if server clear failed
+            sessionStorage.removeItem('held_cart');
+            toast((srv && srv.message) ? srv.message : 'Failed to hold sale', 'red');
+            return;
+          }
           cart = [];
+          // reset selected customer to Walk-in for new transaction
+          setCustomerSelection('', 'Walk-in Customer');
           renderCart();
           toast('Sale held');
-        }
+        })();
       }
 
       function recallHeld() {
         const h = sessionStorage.getItem('held_cart');
-        if (h) {
-          cart = JSON.parse(h);
+        if (!h) { toast('No held sale', 'amber'); return; }
+        let heldObj;
+        try { heldObj = JSON.parse(h); } catch (e) { sessionStorage.removeItem('held_cart'); toast('No held sale', 'amber'); return; }
+        const heldArr = Array.isArray(heldObj.cart) ? heldObj.cart : [];
+        const heldCustomer = heldObj.customer || '';
+        if (!Array.isArray(heldArr) || heldArr.length === 0) { sessionStorage.removeItem('held_cart'); toast('No held sale', 'amber'); return; }
+        (async function(){
+          // clear current server cart first
+          const cleared = await serverCartAction('clear');
+          if (!cleared || cleared.status !== 'ok') { toast((cleared && cleared.message) ? cleared.message : 'Cannot recall sale', 'red'); return; }
+          // set each SKU on server
+          for (const it of heldArr) {
+            const sku = it.sku;
+            const qty = parseInt(it.qty || 0, 10);
+            if (!sku || qty <= 0) continue;
+            const res = await serverCartAction('set', sku, qty);
+            if (!res || res.status !== 'ok') { toast((res && res.message) ? res.message : 'Failed to restore held sale', 'red'); return; }
+          }
+          // restore selected customer
+          if (heldCustomer !== '') {
+            // find option label for this customer
+            const opt = document.querySelector('#customer_list .combo-option[data-value="' + String(heldCustomer) + '"]');
+            const label = opt ? opt.dataset.label : '';
+            setCustomerSelection(heldCustomer, label || undefined);
+          }
+          // update local cart to heldArr (map to expected shape)
+          cart = heldArr.map(it => ({ sku: it.sku, name: it.name || '', price: parseFloat(it.price || 0), qty: parseInt(it.qty || 0,10), stock: it.stock || 999 }));
           sessionStorage.removeItem('held_cart');
           renderCart();
           toast('Sale recalled');
-        } else toast('No held sale', 'amber');
+        })();
       }
 
       function calcTotals() {
