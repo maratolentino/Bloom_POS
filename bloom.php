@@ -157,7 +157,7 @@ if ($page === "login" && $_SERVER["REQUEST_METHOD"] === "POST") {
 if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && isLoggedIn() && $_SESSION["user_role"] === "Admin") {
   $emp_id   = isset($_POST["emp_id"])    ? trim($_POST["emp_id"])    : "";
   $name     = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : "";
-  $role     = isset($_POST["role"])      ? $_POST["role"]            : "Cashier";
+  $role     = "Cashier"; // New accounts can only be Cashier; Admin creation via form is disabled
   $passcode = isset($_POST["passcode"])  ? $_POST["passcode"]        : "";
   $job_role = (strcasecmp($role, "Admin") === 0) ? "Manager" : "Cashier"; // strcasecmp() for case-insensitive role check
 
@@ -2396,9 +2396,8 @@ function factorial(int $n): int
           <div class="form-row">
             <div class="form-group"><label>Employee ID</label><input type="text" name="emp_id" placeholder="EMP-003" required></div>
             <div class="form-group"><label>Role</label>
-              <select name="role">
+              <select name="role" style="appearance:none; -webkit-appearance:none; -moz-appearance:none; background-image:none; padding-right:12px;">
                 <option value="Cashier">Cashier</option>
-                <option value="Admin">Admin</option>
               </select>
             </div>
           </div>
