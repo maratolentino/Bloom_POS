@@ -2886,7 +2886,7 @@ function factorial(int $n): int
                 <div id="r_items"></div>
                 <hr class="receipt-sep">
                 <div class="receipt-row"><span>Subtotal</span><span id="r_sub">&#8369;0.00</span></div>
-                <div class="receipt-row"><span id="r_promo_label" style="display:none;">Promotion: <span id="r_promo_name"></span></span><span id="r_promo_amt" style="display:none;"></span></div>
+                <div class="receipt-row" id="r_promo_row" style="display:none;"><span>Promotion</span><span id="r_promo_name"></span></div>
                 <div class="receipt-row"><span>Discount</span><span id="r_disc">&#8369;0.00</span></div>
                 <div class="receipt-row"><span>Points Redeemed</span><span id="r_points">&#8369;0.00</span></div>
                 <div class="receipt-row"><span>VAT 12%</span><span id="r_tax">&#8369;0.00</span></div>
@@ -3320,16 +3320,18 @@ function factorial(int $n): int
 
         document.getElementById('r_sub').innerHTML = fmt(sub);
         document.getElementById('r_disc').innerHTML = fmt(disc);
-        // Promotion display on receipt
-        const rPromoLabel = document.getElementById('r_promo_label');
+        // Promotion display on receipt: show promotion name as its own row; Discount row shows the deduction amount
+        const rPromoRow = document.getElementById('r_promo_row');
         const rPromoName = document.getElementById('r_promo_name');
-        const rPromoAmt = document.getElementById('r_promo_amt');
+        const rDisc = document.getElementById('r_disc');
         if (promoId && promoId !== '0' && disc > 0) {
-          if (rPromoLabel) { rPromoLabel.style.display = 'inline'; rPromoName.textContent = pname; }
-          if (rPromoAmt) { rPromoAmt.style.display = 'inline'; rPromoAmt.innerHTML = '-' + fmt(disc); }
+          if (rPromoRow) rPromoRow.style.display = '';
+          if (rPromoName) rPromoName.textContent = pname || '';
+          if (rDisc) rDisc.innerHTML = '-' + fmt(disc);
         } else {
-          if (rPromoLabel) rPromoLabel.style.display = 'none';
-          if (rPromoAmt) { rPromoAmt.style.display = 'none'; rPromoAmt.innerHTML = ''; }
+          if (rPromoRow) rPromoRow.style.display = 'none';
+          if (rPromoName) rPromoName.textContent = '';
+          if (rDisc) rDisc.innerHTML = fmt(0);
         }
         document.getElementById('r_points').innerHTML = pointsApplied > 0 ? '-' + fmt(pointsApplied) : '&#8369;0.00';
         document.getElementById('r_tax').innerHTML = fmt(tax);
