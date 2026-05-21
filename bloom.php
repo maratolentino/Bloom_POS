@@ -295,10 +295,11 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
       $conn->query("UPDATE inventory SET stock_qty = stock_qty - $qty WHERE sku = '$sku' AND stock_qty >= $qty");
     }
     if ($customer_id) {
-      $pts = (int)floor($total_amount / 100);
-      if (is_int($pts) && $pts > 0) {
-        $conn->query("UPDATE customers SET loyalty_points = loyalty_points + $pts WHERE customer_id = $customer_id");
-      }
+      $pts = 5;
+      $updatePoints = $conn->prepare("UPDATE customers SET loyalty_points = loyalty_points + ? WHERE customer_id = ?");
+      $updatePoints->bind_param("ii", $pts, $customer_id);
+      $updatePoints->execute();
+      $updatePoints->close();
     }
     $order_skus = implode(',', array_map(function ($i) { return $i['sku']; }, $cart_data));
     header("Location: ?page=checkout&success=1&order_id=" . urlencode($order_skus));
@@ -1294,6 +1295,113 @@ function factorial(int $n): int
       gap: 14px;
     }
 
+    /* ── Checkout customer combobox ── */
+    .customer-combobox {
+      position: relative;
+      font-family: inherit;
+      font-size: 13px;
+    }
+
+    .customer-combobox .combo-control {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 46px;
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid var(--taupe);
+      border-radius: var(--radius);
+      background: var(--white);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color .18s, box-shadow .18s;
+    }
+
+    .customer-combobox .combo-control:focus,
+    .customer-combobox.open .combo-control {
+      outline: none;
+      border-color: var(--chestnut);
+      box-shadow: 0 0 0 3px rgba(124, 90, 68, .13);
+    }
+
+    .customer-combobox .combo-value {
+      display: inline-block;
+      max-width: calc(100% - 24px);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .customer-combobox .combo-arrow {
+      margin-left: 12px;
+      color: var(--text-3);
+      font-size: 14px;
+    }
+
+    .customer-combobox .combo-panel {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 8px);
+      background: var(--white);
+      border: 1.5px solid var(--taupe);
+      border-radius: var(--radius);
+      box-shadow: 0 16px 40px rgba(56,46,40,.12);
+      z-index: 20;
+      display: none;
+    }
+
+    .customer-combobox.open .combo-panel {
+      display: block;
+    }
+
+    .customer-combobox .combo-search {
+      width: 100%;
+      padding: 11px 14px;
+      border: none;
+      border-bottom: 1px solid var(--taupe);
+      border-radius: var(--radius) var(--radius) 0 0;
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+      background: var(--white);
+    }
+
+    .customer-combobox .combo-list {
+      max-height: 220px;
+      overflow-y: auto;
+      background: var(--white);
+    }
+
+    .customer-combobox .combo-option {
+      padding: 11px 14px;
+      cursor: pointer;
+      transition: background .18s;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .customer-combobox .combo-option:hover,
+    .customer-combobox .combo-option.focused {
+      background: var(--taupe-l);
+    }
+
+    .customer-combobox .combo-option.selected {
+      background: var(--chestnut);
+      color: #fff;
+    }
+
+    .customer-combobox .combo-option.combo-pinned {
+      font-weight: 700;
+    }
+
+    .customer-combobox .combo-no-results {
+      padding: 12px 14px;
+      color: var(--text-3);
+      font-size: 13px;
+    }
+
     /* ── Buttons ── */
     .btn {
       display: inline-flex;
@@ -2136,6 +2244,15 @@ function factorial(int $n): int
       overflow: hidden;
     }
 
+    .crm-row-clickable {
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+
+    .crm-row-clickable:hover td {
+      background: #f5f1ef;
+    }
+
     /* ── Reports ── */
     .period-tabs {
       display: flex;
@@ -2498,12 +2615,25 @@ function factorial(int $n): int
             <span id="cart_count" class="badge badge-brown">0 items</span>
           </div>
           <div style="margin-top:10px;">
-            <select id="customer_select" onchange="calcTotals()" style="font-size:12px; padding:6px 10px; width:100%;">
-              <option value="">Walk-in Customer</option>
-              <?php foreach ($customers as $c): ?>
-                <option value="<?= $c['customer_id'] ?>"><?= htmlspecialchars($c['full_name'], ENT_QUOTES, 'UTF-8') ?> (<?= $c['loyalty_points'] ?> pts)</option>
-              <?php endforeach; ?>
-            </select>
+            <div class="customer-combobox" id="customer_combobox">
+              <div class="combo-control" id="customer_combo_control" role="combobox" aria-haspopup="listbox" aria-expanded="false" tabindex="0">
+                <span class="combo-value" id="customer_combo_value">Walk-in Customer</span>
+                <span class="combo-arrow">▾</span>
+              </div>
+              <div class="combo-panel" id="customer_combo_panel">
+                <input type="text" id="customer_search" class="combo-search" placeholder="Search customers..." autocomplete="off">
+                <div class="combo-list" id="customer_list" role="listbox" aria-label="Choose a customer">
+                  <div class="combo-option combo-pinned selected" data-value="" data-label="Walk-in Customer">Walk-in Customer</div>
+                  <?php foreach ($customers as $c): ?>
+                    <?php $cust_label = 'CUST-' . str_pad($c['customer_id'], 3, '0', STR_PAD_LEFT) . ' - ' . $c['full_name'] . ' (' . intval($c['loyalty_points']) . ' pts)'; ?>
+                    <div class="combo-option" data-value="<?= $c['customer_id'] ?>" data-label="<?= htmlspecialchars($cust_label, ENT_QUOTES, 'UTF-8') ?>">
+                      <?= htmlspecialchars($cust_label, ENT_QUOTES, 'UTF-8') ?>
+                    </div>
+                  <?php endforeach; ?>
+                  <div class="combo-no-results" style="display:none;">No customers found</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2607,8 +2737,133 @@ function factorial(int $n): int
     <script>
       const TAX_RATE = 0.12;
       let cart = [];
+      let selectedCustomerId = '';
       const STORE_INFO = <?= json_encode($store_info, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       const allProducts = <?= json_encode($inventory) ?>;
+
+      function getSelectedCustomerValue() {
+        return selectedCustomerId;
+      }
+
+      function setCustomerSelection(value, label) {
+        selectedCustomerId = value === null ? '' : String(value);
+        const selectedLabel = label || (selectedCustomerId === '' ? 'Walk-in Customer' : 'Walk-in Customer');
+        document.getElementById('customer_combo_value').textContent = selectedLabel;
+        document.getElementById('f_customer').value = selectedCustomerId;
+        document.querySelectorAll('#customer_list .combo-option').forEach(el => {
+          el.classList.toggle('selected', el.dataset.value === selectedCustomerId);
+        });
+      }
+
+      function filterCustomerOptions(query) {
+        const q = String(query || '').trim().toLowerCase();
+        const list = document.getElementById('customer_list');
+        const options = Array.from(list.querySelectorAll('.combo-option:not(.combo-pinned)'));
+        let matches = 0;
+        options.forEach(opt => {
+          const label = opt.dataset.label.toLowerCase();
+          const visible = q === '' || label.includes(q);
+          opt.style.display = visible ? '' : 'none';
+          if (visible) matches++;
+        });
+        const noResults = list.querySelector('.combo-no-results');
+        if (noResults) {
+          noResults.style.display = matches === 0 ? 'block' : 'none';
+        }
+      }
+
+      function initCustomerCombobox() {
+        const wrapper = document.getElementById('customer_combobox');
+        const control = document.getElementById('customer_combo_control');
+        const panel = document.getElementById('customer_combo_panel');
+        const search = document.getElementById('customer_search');
+        const list = document.getElementById('customer_list');
+        const optionElements = Array.from(list.querySelectorAll('.combo-option'));
+
+        function openDropdown() {
+          wrapper.classList.add('open');
+          control.setAttribute('aria-expanded', 'true');
+          search.focus();
+          filterCustomerOptions(search.value);
+        }
+
+        function closeDropdown() {
+          wrapper.classList.remove('open');
+          control.setAttribute('aria-expanded', 'false');
+          clearFocusedOption();
+        }
+
+        function clearFocusedOption() {
+          optionElements.forEach(el => el.classList.remove('focused'));
+        }
+
+        function getVisibleOptions() {
+          return optionElements.filter(el => el.style.display !== 'none');
+        }
+
+        function selectOption(option) {
+          if (!option || !option.dataset) return;
+          setCustomerSelection(option.dataset.value, option.dataset.label);
+          closeDropdown();
+          calcTotals();
+        }
+
+        control.addEventListener('click', function(e) {
+          e.stopPropagation();
+          if (wrapper.classList.contains('open')) {
+            closeDropdown();
+          } else {
+            openDropdown();
+          }
+        });
+
+        list.addEventListener('click', function(e) {
+          const option = e.target.closest('.combo-option');
+          if (option) {
+            selectOption(option);
+          }
+        });
+
+        search.addEventListener('input', function(e) {
+          filterCustomerOptions(e.target.value);
+        });
+
+        search.addEventListener('keydown', function(e) {
+          const visible = getVisibleOptions();
+          const currentIndex = visible.findIndex(opt => opt.classList.contains('focused'));
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const nextIndex = currentIndex < visible.length - 1 ? currentIndex + 1 : 0;
+            clearFocusedOption();
+            if (visible[nextIndex]) visible[nextIndex].classList.add('focused');
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prevIndex = currentIndex > 0 ? currentIndex - 1 : visible.length - 1;
+            clearFocusedOption();
+            if (visible[prevIndex]) visible[prevIndex].classList.add('focused');
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (visible[currentIndex]) {
+              selectOption(visible[currentIndex]);
+            } else {
+              const first = visible[0];
+              if (first) selectOption(first);
+            }
+          } else if (e.key === 'Escape') {
+            closeDropdown();
+          }
+        });
+
+        document.addEventListener('click', function(event) {
+          if (!wrapper.contains(event.target)) {
+            closeDropdown();
+          }
+        });
+
+        setCustomerSelection('', 'Walk-in Customer');
+      }
+
+      window.addEventListener('DOMContentLoaded', initCustomerCombobox);
 
       function addToCart(p) {
         if (p.stock_qty <= 0) {
@@ -2748,7 +3003,7 @@ function factorial(int $n): int
         document.getElementById('f_tax').value = tax.toFixed(2);
         document.getElementById('f_disc').value = disc.toFixed(2);
         document.getElementById('f_cart').value = JSON.stringify(cart);
-        document.getElementById('f_customer').value = document.getElementById('customer_select').value;
+        document.getElementById('f_customer').value = getSelectedCustomerValue();
       }
 
       function openPayModal() {
@@ -3870,7 +4125,7 @@ function factorial(int $n): int
                       <?php else: foreach ($customers_all as $c):
                         $av = strtoupper(substr($c['full_name'], 0, 1));
                       ?>
-                        <tr data-cust-id="<?= $c['customer_id'] ?>">
+                        <tr data-cust-id="<?= $c['customer_id'] ?>" data-customer="<?= htmlspecialchars(json_encode($c), ENT_QUOTES, 'UTF-8') ?>" class="crm-row-clickable">
                           <td>
                             <div class="customer-row">
                               <div class="cust-avatar">
@@ -3904,8 +4159,7 @@ function factorial(int $n): int
                           <td><span class="badge badge-brown"><?= number_format($c['loyalty_points']) ?> pts</span></td>
                           <td style="color:var(--text-3); font-size:12px;"><?= !empty($c['member_since']) ? date('d M Y', strtotime($c['member_since'])) : '&#8212;' ?></td>
                           <td>
-                            <div style="display: flex; gap: 12px; row-gap: 10px; align-items: center; flex-wrap: wrap;">
-                              <button onclick='openEditCust(<?= json_encode($c) ?>)' class="btn btn-sm btn-secondary">Edit</button>
+                            <div style="display: flex; gap: 8px; align-items: center;">
                               <?php if ($is_admin): ?>
                                 <?php if (isset($c['approved']) && $c['approved'] == 0): ?>
                                   <form method="POST" action="?page=crm" style="margin: 0;">
@@ -3918,12 +4172,16 @@ function factorial(int $n): int
                                     <button type="submit" name="reject_customer" class="btn btn-sm btn-ghost" style="color: var(--red); border: 1px solid rgba(168, 50, 50, .12);">Reject</button>
                                   </form>
                                 <?php endif; ?>
+                              <?php endif; ?>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
+                              <?php if ($is_admin): ?>
                                 <form data-confirm="Are you sure you want to 100% delete this customer and all logs permanently from the database?" method="POST" action="?page=crm" style="margin: 0;">
                                   <input type="hidden" name="customer_id" value="<?= $c['customer_id'] ?>">
-                                  <button type="submit" name="delete_customer" class="btn btn-sm btn-danger">Delete</button>
+                                  <button type="submit" name="delete_customer" class="btn btn-sm btn-danger" onclick="event.stopPropagation();">Delete</button>
                                 </form>
                               <?php endif; ?>
-                              <button type="button" onclick="openHistory(<?= $c['customer_id'] ?>)" class="btn btn-sm btn-secondary">History</button>
+                              <button type="button" onclick="event.stopPropagation(); openHistory(<?= $c['customer_id'] ?>);" class="btn btn-sm btn-secondary">History</button>
                             </div>
                           </td>
                         </tr>
@@ -3990,6 +4248,21 @@ function factorial(int $n): int
             document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
               if (e.target === o) o.classList.remove('open');
             }));
+            
+            // CRM row click handler to open Edit modal
+            document.querySelectorAll('.crm-row-clickable').forEach(row => {
+              row.addEventListener('click', function(e) {
+                const custData = this.getAttribute('data-customer');
+                if (custData) {
+                  try {
+                    const cust = JSON.parse(custData);
+                    openEditCust(cust);
+                  } catch (err) {
+                    console.error('Error parsing customer data:', err);
+                  }
+                }
+              });
+            });
           </script>
 
         <?php
