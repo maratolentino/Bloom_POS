@@ -94,12 +94,17 @@ if ($historyCheck && $historyCheck->num_rows === 0) {
   $conn->query("CREATE TABLE customer_approval_history (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, customer_id INT NOT NULL, action VARCHAR(32) NOT NULL, by_employee_id VARCHAR(50) NULL, note VARCHAR(255) NULL, ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
-if (!isLoggedIn() && $page !== "login" && $page !== "register") {
+if (!isLoggedIn() && $page !== "login") {
   header("Location: ?page=login");
   exit;
 }
 if (isLoggedIn() && $page === "login") {
   header("Location: ?page=dashboard");
+  exit;
+}
+// Only Admins may access the Create Account (register) page
+if ($page === "register" && (!isLoggedIn() || $_SESSION["user_role"] !== "Admin")) {
+  header("Location: " . (isLoggedIn() ? "?page=dashboard" : "?page=login"));
   exit;
 }
 
@@ -149,7 +154,7 @@ if ($page === "login" && $_SERVER["REQUEST_METHOD"] === "POST") {
 
 // ── Register ──────────────────────────────────────────────────
 
-if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST") {
+if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && isLoggedIn() && $_SESSION["user_role"] === "Admin") {
   $emp_id   = isset($_POST["emp_id"])    ? trim($_POST["emp_id"])    : "";
   $name     = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : "";
   $role     = isset($_POST["role"])      ? $_POST["role"]            : "Cashier";
@@ -191,7 +196,7 @@ if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST") {
     //                 ^^^^^^ 6 s's — one per ? placeholder
 
     if ($stmt->execute()) {
-      header("Location: ?page=login&registered=1");
+      header("Location: ?page=employees&registered=1");
       exit;
     } else {
       // Defensive fallback: if insert still fails, present friendly popup message
@@ -2366,9 +2371,6 @@ function factorial(int $n): int
           </label>
           <button type="submit" class="btn btn-primary btn-full btn-lg" style="margin-top:8px;">Sign In</button>
         </form>
-        <p style="text-align:center; margin-top:16px; font-size:12.5px; color:var(--text-3);">
-          New employee? <a href="?page=register" style="color:var(--chestnut); font-weight:600;">Create account</a>
-        </p>
       </div>
     </div>
 
@@ -2409,7 +2411,7 @@ function factorial(int $n): int
           <button type="submit" class="btn btn-primary btn-full btn-lg" style="margin-top:8px;">Create Account</button>
         </form>
         <p style="text-align:center; margin-top:16px; font-size:12.5px; color:var(--text-3);">
-          Already have an account? <a href="?page=login" style="color:var(--chestnut); font-weight:600;">Sign in</a>
+          <a href="?page=employees" style="color:var(--chestnut); font-weight:600;">Back to Employees</a>
         </p>
       </div>
     </div>
@@ -4002,6 +4004,9 @@ function factorial(int $n): int
               </div>
               <a href="?page=register" class="btn btn-primary">+ Register Staff</a>
             </div>
+            <?php if (isset($_GET['registered'])): ?>
+              <div class="alert alert-success" style="margin:0 0 16px;">Account created successfully.</div>
+            <?php endif; ?>
             <?php foreach ($employees as $emp):
               $av = makeInitials($emp['full_name']);
               $sales_today = $conn->query("SELECT COALESCE(SUM(total_amount),0) as t FROM sales WHERE employee_id='{$emp['employee_id']}' AND DATE(sale_date)='$date_today' AND status='Completed'")->fetch_assoc()['t'];
