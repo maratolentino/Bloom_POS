@@ -1208,9 +1208,25 @@ function factorial(int $n): int
 
     /* ── Sidebar ── */
     .sb-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
       padding: 26px 22px 20px;
       border-bottom: 1px solid rgba(212, 188, 169, .18);
       background: linear-gradient(180deg, rgba(124, 90, 68, .25) 0%, transparent 100%);
+    }
+
+    .sb-brand-text {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .sb-brand-logo {
+      width: 56px;
+      height: auto;
+      display: block;
+      margin: 0;
     }
 
     .sb-brand-name {
@@ -1218,12 +1234,13 @@ function factorial(int $n): int
       font-weight: 800;
       color: var(--taupe-l);
       letter-spacing: -.3px;
+      margin-bottom: 1px;
     }
 
     .sb-brand-sub {
       font-size: 12px;
       color: var(--taupe);
-      margin-top: 3px;
+      margin-top: 0;
       opacity: .75;
     }
 
@@ -2240,6 +2257,22 @@ function factorial(int $n): int
     .receipt-row {
       display: flex;
       justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .receipt-row span:first-child {
+      flex: 1 1 auto;
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .receipt-row span:last-child {
+      flex: 0 0 auto;
+      text-align: right;
+      min-width: 6ch;
     }
 
     /* ── Inventory grid ── */
@@ -3927,8 +3960,9 @@ function factorial(int $n): int
           body{font-family:'Courier New', monospace; padding:16px; color:#231f20; background:#fff; display:flex; justify-content:center; align-items:flex-start; min-height:100vh;}
           .receipt{max-width:360px;width:100%; margin:0 auto;}
           .receipt-title{font-weight:800;text-align:center;font-size:16px;margin-bottom:10px;}
-          .receipt-row{display:flex;justify-content:space-between;margin:6px 0;font-size:13px;}
-          .receipt-row span{display:inline-block;}
+          .receipt-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:6px 0;font-size:13px;}
+          .receipt-row span:first-child{flex:1 1 auto;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+          .receipt-row span:last-child{flex:0 0 auto;text-align:right;min-width:6ch;}
           .receipt-sep{border:none;border-top:1px solid #ddd;margin:10px 0;}
           @media print { body{margin:0; padding:0; display:block;} .receipt{margin:0 auto;} }
         `;
@@ -4283,8 +4317,9 @@ function factorial(int $n): int
                 body{font-family:'Courier New', monospace; padding:16px; color:#231f20; background:#fff; display:flex; justify-content:center; align-items:flex-start; min-height:100vh;}
                 .receipt{max-width:360px;width:100%; margin:0 auto;}
                 .receipt-title{font-weight:800;text-align:center;font-size:16px;margin-bottom:10px;}
-                .receipt-row{display:flex;justify-content:space-between;margin:6px 0;font-size:13px;}
-                .receipt-row span{display:inline-block;}
+                .receipt-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:6px 0;font-size:13px;}
+                .receipt-row span:first-child{flex:1 1 auto;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                .receipt-row span:last-child{flex:0 0 auto;text-align:right;min-width:6ch;}
                 .receipt-sep{border:none;border-top:1px solid #ddd;margin:10px 0;}
                 @media print { body{margin:0; padding:0; display:block;} .receipt{margin:0 auto;} }
               `;
@@ -4333,8 +4368,11 @@ function factorial(int $n): int
       </div>
       <nav class="sidebar">
         <div class="sb-brand">
-          <div class="sb-brand-name">Bloom POS</div>
-          <div class="sb-brand-sub">Flower Shop System</div>
+          <img src="logo.svg" alt="Bloom POS logo" class="sb-brand-logo">
+          <div class="sb-brand-text">
+            <div class="sb-brand-name">Bloom POS</div>
+            <div class="sb-brand-sub">Flower Shop System</div>
+          </div>
         </div>
 
         <div style="padding:12px 0 4px;">
@@ -5825,10 +5863,10 @@ if (!empty($r_sales_rows)):
         document.getElementById('td_total').textContent = '\u20B1' + (parseFloat(d.total_amount || 0).toFixed(2));
 
         if ((d.payment_method || '').toLowerCase() === 'cash') {
-          // Show amount received and change
+          // Show amount received and change using flex display to preserve receipt row layout
           document.getElementById('td_wallet_area').style.display = 'none';
-          document.getElementById('td_amount_received_row').style.display = 'block';
-          document.getElementById('td_change_row').style.display = 'block';
+          document.getElementById('td_amount_received_row').style.display = 'flex';
+          document.getElementById('td_change_row').style.display = 'flex';
           const amt = parseFloat(d.amount_tendered || d.amountReceived || 0) || 0;
           document.getElementById('td_amount_received').textContent = '\u20B1' + amt.toFixed(2);
           const change = amt - (parseFloat(d.total_amount || 0) || 0);
