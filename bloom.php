@@ -2318,13 +2318,10 @@ function factorial(int $n): int
     }
 
     .inv-card-img img {
-      max-width: 100%;
-      max-height: 100%;
-      width: auto;
-      height: auto;
+      width: 100%;
+      height: 100%;
       display: block;
-      margin: auto;
-      object-fit: contain;
+      object-fit: cover;
       transition: transform .3s ease;
     }
 
