@@ -154,6 +154,25 @@ INSERT INTO `inventory` (`sku`, `product_name`, `price`, `stock_qty`, `category_
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `showcase_bundles`
+--
+
+CREATE TABLE `showcase_bundles` (
+  `showcase_id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `description` text NOT NULL,
+  `main` int(11) NOT NULL DEFAULT 0,
+  `fillers` int(11) NOT NULL DEFAULT 0,
+  `greenery` int(11) NOT NULL DEFAULT 0,
+  `meta` varchar(255) NOT NULL,
+  `image_url` text DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`showcase_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `sales`
 --
 

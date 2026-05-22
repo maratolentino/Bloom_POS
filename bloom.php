@@ -71,6 +71,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_cart'])) {
   exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_showcase'])) {
+  header('Content-Type: application/json');
+  $items = [];
+  $res = $conn->query("SELECT showcase_id, name, description, main, fillers, greenery, meta, image_url FROM showcase_bundles ORDER BY showcase_id ASC");
+  if ($res) {
+    while ($row = $res->fetch_assoc()) {
+      $items[] = $row;
+    }
+  }
+  echo json_encode(['status' => 'ok', 'items' => $items]);
+  exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_showcase') {
+  header('Content-Type: application/json');
+  if (empty($is_admin)) {
+    echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
+    exit;
+  }
+  $name = isset($_POST['name']) ? trim($_POST['name']) : '';
+  $description = isset($_POST['description']) ? trim($_POST['description']) : '';
+  $main = isset($_POST['main']) ? max(0, (int)$_POST['main']) : 0;
+  $fillers = isset($_POST['fillers']) ? max(0, (int)$_POST['fillers']) : 0;
+  $greenery = isset($_POST['greenery']) ? max(0, (int)$_POST['greenery']) : 0;
+  $meta = isset($_POST['meta']) ? trim($_POST['meta']) : '';
+  $image_url = isset($_POST['image_url']) && $_POST['image_url'] !== '' ? $_POST['image_url'] : null;
+
+  $stmt = $conn->prepare("INSERT INTO showcase_bundles (name, description, main, fillers, greenery, meta, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)");
+  $stmt->bind_param('ssiiiss', $name, $description, $main, $fillers, $greenery, $meta, $image_url);
+  if ($stmt->execute()) {
+    $id = $stmt->insert_id;
+    echo json_encode(['status' => 'ok', 'item' => ['showcase_id' => $id, 'name' => $name, 'description' => $description, 'main' => $main, 'fillers' => $fillers, 'greenery' => $greenery, 'meta' => $meta, 'image_url' => $image_url]]);
+  } else {
+    echo json_encode(['status' => 'error', 'message' => 'Failed to add showcase item']);
+  }
+  $stmt->close();
+  exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_showcase') {
+  header('Content-Type: application/json');
+  if (empty($is_admin)) {
+    echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
+    exit;
+  }
+  $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+  if ($id <= 0) {
+    echo json_encode(['status' => 'error', 'message' => 'Invalid showcase id']);
+    exit;
+  }
+  $stmt = $conn->prepare("DELETE FROM showcase_bundles WHERE showcase_id = ?");
+  $stmt->bind_param('i', $id);
+  if ($stmt->execute()) {
+    echo json_encode(['status' => 'ok']);
+  } else {
+    echo json_encode(['status' => 'error', 'message' => 'Failed to delete showcase item']);
+  }
+  $stmt->close();
+  exit;
+}
+
 // ── AJAX: Assign/Remove Product Discount ─────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'assign_product_discount') {
   header('Content-Type: application/json');
@@ -1157,14 +1218,17 @@ function factorial(int $n): int
       box-shadow: 0 3px 10px rgba(94, 66, 48, .4);
     }
 
-    .sb-link svg {
+    .sb-link svg,
+    .sb-link img {
       width: 17px;
       height: 17px;
       opacity: .85;
       flex-shrink: 0;
+      object-fit: contain;
     }
 
-    .sb-link.active svg {
+    .sb-link.active svg,
+    .sb-link.active img {
       opacity: 1;
     }
 
@@ -2698,6 +2762,429 @@ function factorial(int $n): int
       </div>
     </div>
 
+  <?php elseif ($page === 'showcase'): ?>
+    <?php
+      $showcaseBundles = [];
+      $showcaseRes = $conn->query("SELECT showcase_id, name, description, main, fillers, greenery, meta, image_url FROM showcase_bundles ORDER BY showcase_id ASC");
+      if ($showcaseRes) {
+        while ($row = $showcaseRes->fetch_assoc()) {
+          $showcaseBundles[] = $row;
+        }
+      }
+    ?>
+    <div class="page">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; gap:16px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+          <a href="?page=dashboard" style="color:var(--text-3); text-decoration:none; font-size:20px; line-height:1;">&larr;</a>
+          <div>
+            <div style="font-size:17px; font-weight:700; color:var(--espresso);">Flower Arrangement Showcase</div>
+            <div style="font-size:12px; color:var(--text-3);">Explore premium bundle packages and bloom your own bouquet.</div>
+          </div>
+        </div>
+          <?php if ($is_admin): ?>
+            <button type="button" class="btn btn-primary add-showcase-btn" onclick="openAddShowcaseModal()">Add Showcase</button>
+          <?php endif; ?>
+        </div>
+
+      <div class="showcase-panel">
+        <div class="showcase-grid" id="showcaseGrid"></div>
+      </div>
+    </div>
+
+    <div class="overlay" id="showcaseModal">
+      <div class="modal-box wide" style="max-width:920px; width:100%;">
+        <div class="modal-header">
+          <button class="modal-close" onclick="closeShowcaseModal()">&times;</button>
+        </div>
+        <div class="showcase-modal-grid">
+          <div class="modal-image-block">
+            <div class="modal-image-placeholder" id="showcaseModalImage">Preview</div>
+          </div>
+          <div class="modal-copy-block">
+            <div style="margin-bottom:18px;">
+              <div class="modal-bundle-name" id="showcaseModalName"></div>
+              <div class="modal-bundle-sub" id="showcaseModalMeta"></div>
+            </div>
+            <div class="modal-bundle-description" id="showcaseModalDescription"></div>
+            <button type="button" class="btn btn-primary btn-full btn-lg" id="showcaseModalAction">Bloom your own bouquet</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay" id="addShowcaseModal">
+      <div class="modal-box" style="max-width:520px; width:100%;">
+        <div class="modal-header">
+          <span class="modal-title">Add Showcase Item</span>
+          <button class="modal-close" onclick="closeAddShowcaseModal()">&times;</button>
+        </div>
+        <form id="addShowcaseForm">
+          <div class="form-group"><label>Name</label><input type="text" id="newShowcaseName" placeholder="Enter showcase name" required></div>
+          <div class="form-group"><label>Description</label><textarea id="newShowcaseDescription" rows="4" placeholder="Enter showcase description" required></textarea></div>
+          <div class="form-group"><label>Main flowers</label><input type="number" min="0" id="newShowcaseFlowers" placeholder="Main flower count" required></div>
+          <div class="form-group"><label>Fillers</label><input type="number" min="0" id="newShowcaseFillers" placeholder="Filler count" required></div>
+          <div class="form-group"><label>Free greenery</label><input type="number" min="0" id="newShowcaseGreenery" placeholder="Greenery count" required></div>
+          <div class="form-group"><label>Image</label><input type="file" id="newShowcaseImage" accept="image/*" style="padding:6px;"></div>
+          <div class="showcase-image-preview" id="newShowcasePreview">Image preview</div>
+          <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:18px;">
+            <button type="button" class="btn btn-secondary" onclick="closeAddShowcaseModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Add Showcase</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="overlay" id="deleteConfirmModal">
+      <div class="modal-box" style="max-width:420px; width:100%;">
+        <div class="modal-header">
+          <span class="modal-title">Confirm delete</span>
+          <button class="modal-close" onclick="closeDeleteConfirm()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:0 24px 18px;">
+          <p id="deleteConfirmMessage" style="margin:0; color:var(--text-2);">Do you wish to delete this showcase?</p>
+        </div>
+        <div class="dialog-actions" style="padding:0 24px 24px; display:flex; justify-content:flex-end; gap:12px;">
+          <button type="button" class="btn btn-secondary" onclick="closeDeleteConfirm()">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="confirmDeleteShowcase()">Confirm</button>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      .showcase-panel { padding: 18px 0; }
+      .showcase-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:26px; }
+      .showcase-card { position:relative; cursor:pointer; border:1px solid var(--taupe); border-radius:18px; background:var(--white); box-shadow:0 12px 22px rgba(0,0,0,.06); overflow:hidden; }
+      .showcase-delete-btn { position:absolute; top:12px; right:12px; width:32px; height:32px; border:none; border-radius:50%; background:rgba(255,255,255,.92); color:var(--espresso); font-size:18px; line-height:1; cursor:pointer; opacity:0; transition:opacity .2s ease, transform .2s ease; }
+      .showcase-card:hover .showcase-delete-btn { opacity:1; transform:translateY(-1px); }
+      .showcase-image { height:180px; background:linear-gradient(145deg, #ffd9e8 0%, #f1e4ff 100%); display:flex; align-items:center; justify-content:center; }
+      .showcase-image-inner { text-align:center; font-size:13px; color:var(--text-3); padding:16px; }
+      .showcase-card-body { padding:14px; }
+      .showcase-card-title { font-size:16px; font-weight:700; margin-bottom:6px; color:var(--espresso); }
+      .showcase-card-meta { font-size:12px; color:var(--text-3); line-height:1.5; }
+      .sub-nav { border:none; background:var(--taupe); color:var(--espresso); width:48px; height:48px; border-radius:50%; font-size:24px; cursor:pointer; transition:transform .2s ease; }
+      .sub-nav:hover { transform:scale(1.04); }
+      .showcase-modal-grid { display:grid; grid-template-columns:1.1fr .9fr; gap:24px; align-items:start; margin-top:18px; }
+      .modal-image-block { background:var(--oatmeal); border-radius:22px; padding:24px; display:flex; align-items:center; justify-content:center; }
+      .modal-image-placeholder { width:100%; min-height:360px; border-radius:20px; background:linear-gradient(135deg, #f8d1d1, #e5daf5); display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--text-3); text-align:center; padding:24px; }
+      .modal-copy-block { display:flex; flex-direction:column; justify-content:space-between; }
+      .modal-bundle-name { font-size:28px; font-weight:800; color:var(--espresso); margin-bottom:8px; }
+      .modal-bundle-sub { font-size:13px; color:var(--text-3); margin-bottom:18px; text-transform:uppercase; letter-spacing:.08em; }
+      .modal-bundle-description { font-size:15px; line-height:1.7; color:var(--text-2); margin-bottom:24px; }
+      .showcase-footer { margin-top:32px; }
+      .sub-carousel { display:flex; align-items:center; gap:12px; }
+      .sub-track-window { overflow:hidden; flex:1; }
+      .sub-track { display:flex; gap:10px; transition:transform .35s ease; }
+      .sub-thumb { min-width:120px; height:96px; background:linear-gradient(135deg, #ffe3e3, #e9e8ff); border-radius:18px; padding:10px; display:flex; flex-direction:column; justify-content:space-between; cursor:pointer; border:2px solid transparent; }
+      .sub-thumb.active { border-color:var(--chestnut); }
+      .sub-thumb-title { font-size:12px; font-weight:700; color:var(--espresso); }
+      .sub-thumb-meta { font-size:11px; color:var(--text-3); }
+      .add-showcase-btn { padding:10px 18px; border-radius:12px; font-weight:700; box-shadow:0 10px 24px rgba(0,0,0,.08); }
+      .showcase-image-preview { min-height:180px; border-radius:18px; background:linear-gradient(135deg, #f2f0ff, #fff4f6); display:flex; align-items:center; justify-content:center; color:var(--text-3); margin-top:10px; padding:16px; text-align:center; }
+      .showcase-image-preview.has-image { background-size:cover; background-position:center; color:transparent; }
+      @media(max-width:1080px) { .showcase-modal-grid { grid-template-columns:1fr; } .showcase-card { min-width:calc((100% - 14px) / 2); flex:0 0 calc((100% - 14px) / 2); max-width:calc((100% - 14px) / 2); } }
+      @media(max-width:760px) { .showcase-controls { flex-direction:column; } .showcase-nav-btn { width:42px; height:42px; } .showcase-card { min-width:100%; flex:0 0 100%; max-width:100%; } }
+    </style>
+
+    <script>
+      const SHOWCASE_BUNDLES = <?= json_encode($showcaseBundles, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+      const SHOWCASE_IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
+      let subSlide = 0;
+
+
+      function openShowcaseModal(index) {
+        const bundle = SHOWCASE_BUNDLES[index];
+        const label = document.getElementById('showcaseModalLabel');
+        const name = document.getElementById('showcaseModalName');
+        const meta = document.getElementById('showcaseModalMeta');
+        const desc = document.getElementById('showcaseModalDescription');
+        const image = document.getElementById('showcaseModalImage');
+        const action = document.getElementById('showcaseModalAction');
+
+        if (label) label.textContent = bundle.name;
+        if (name) name.textContent = bundle.name;
+        if (meta) meta.textContent = bundle.meta;
+        if (desc) desc.textContent = bundle.description;
+        if (image) {
+          if (bundle.imageUrl) {
+            image.style.backgroundImage = 'url(' + bundle.imageUrl + ')';
+            image.style.backgroundSize = 'cover';
+            image.style.backgroundPosition = 'center';
+            image.textContent = '';
+          } else {
+            image.style.backgroundImage = 'none';
+            image.textContent = '';
+          }
+        }
+        if (action) action.onclick = function() {
+          window.location = '?page=checkout&bundle_name=' + encodeURIComponent(bundle.name)
+            + '&main=' + bundle.main
+            + '&fillers=' + bundle.fillers
+            + '&greenery=' + bundle.greenery;
+        };
+
+        subSlide = index;
+        renderSubTrack(index);
+        document.getElementById('showcaseModal').classList.add('open');
+      }
+
+      function closeShowcaseModal() {
+        document.getElementById('showcaseModal').classList.remove('open');
+      }
+
+      function renderSubTrack(active) {
+        const subTrack = document.getElementById('subTrack');
+        if (!subTrack) return;
+        subTrack.innerHTML = '';
+        SHOWCASE_BUNDLES.forEach((bundle, index) => {
+          const thumb = document.createElement('button');
+          thumb.type = 'button';
+          thumb.className = 'sub-thumb' + (index === active ? ' active' : '');
+          thumb.onclick = () => openShowcaseModal(index);
+          thumb.innerHTML = '<div class="sub-thumb-title">' + bundle.name + '</div><div class="sub-thumb-meta">' + bundle.meta + '</div>';
+          subTrack.appendChild(thumb);
+        });
+        const width = subTrack.children[0] ? subTrack.children[0].offsetWidth + 10 : 0;
+        subTrack.style.transform = 'translateX(' + (-active * width) + 'px)';
+      }
+
+      function advanceSubCarousel(direction) {
+        subSlide = (subSlide + direction + SHOWCASE_BUNDLES.length) % SHOWCASE_BUNDLES.length;
+        openShowcaseModal(subSlide);
+      }
+
+      function createShowcaseCard(bundle, index) {
+        const card = document.createElement('div');
+        card.className = 'showcase-card';
+        card.onclick = function() { openShowcaseModal(index); };
+
+        const image = document.createElement('div');
+        image.className = 'showcase-image';
+        if (bundle.imageUrl) {
+          image.style.backgroundImage = 'url("' + bundle.imageUrl + '")';
+          image.style.backgroundSize = 'cover';
+          image.style.backgroundPosition = 'center';
+          const inner = document.createElement('div');
+          inner.className = 'showcase-image-inner';
+          inner.style.background = 'rgba(0,0,0,0.28)';
+          inner.style.color = '#ffffff';
+          inner.style.width = '100%';
+          inner.style.height = '100%';
+          inner.style.display = 'flex';
+          inner.style.alignItems = 'center';
+          inner.style.justifyContent = 'center';
+          inner.style.textAlign = 'center';
+          inner.style.padding = '16px';
+          image.appendChild(inner);
+        } else {
+          const inner = document.createElement('div');
+          inner.className = 'showcase-image-inner';
+          image.appendChild(inner);
+        }
+
+        const body = document.createElement('div');
+        body.className = 'showcase-card-body';
+        const title = document.createElement('div');
+        title.className = 'showcase-card-title';
+        title.textContent = bundle.name;
+        const meta = document.createElement('div');
+        meta.className = 'showcase-card-meta';
+        meta.textContent = bundle.meta;
+        body.appendChild(title);
+        body.appendChild(meta);
+
+        if (SHOWCASE_IS_ADMIN) {
+          const deleteBtn = document.createElement('button');
+          deleteBtn.type = 'button';
+          deleteBtn.className = 'showcase-delete-btn';
+          deleteBtn.innerHTML = '&times;';
+          deleteBtn.setAttribute('aria-label', 'Delete showcase item');
+          deleteBtn.onclick = function(event) { event.stopPropagation(); removeShowcaseItem(index); };
+          card.appendChild(deleteBtn);
+        }
+
+        card.appendChild(image);
+        card.appendChild(body);
+        return card;
+      }
+
+      function renderShowcaseGrid() {
+        const grid = document.getElementById('showcaseGrid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        SHOWCASE_BUNDLES.forEach((bundle, index) => {
+          grid.appendChild(createShowcaseCard(bundle, index));
+        });
+      }
+
+      let showcaseDeleteIndex = null;
+      let showcaseDeleteId = null;
+
+      function removeShowcaseItem(index) {
+        showcaseDeleteIndex = index;
+        showcaseDeleteId = SHOWCASE_BUNDLES[index] ? SHOWCASE_BUNDLES[index].showcase_id : null;
+        const message = document.getElementById('deleteConfirmMessage');
+        if (message) {
+          message.textContent = 'Do you wish to delete this showcase?';
+        }
+        const modal = document.getElementById('deleteConfirmModal');
+        if (modal) modal.classList.add('open');
+      }
+
+      function closeDeleteConfirm() {
+        showcaseDeleteIndex = null;
+        showcaseDeleteId = null;
+        const modal = document.getElementById('deleteConfirmModal');
+        if (modal) modal.classList.remove('open');
+      }
+
+      async function confirmDeleteShowcase() {
+        if (showcaseDeleteIndex === null || showcaseDeleteId === null) return;
+        const index = showcaseDeleteIndex;
+        const id = showcaseDeleteId;
+        showcaseDeleteIndex = null;
+        showcaseDeleteId = null;
+
+        try {
+          const res = await fetch(window.location.pathname, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ action: 'delete_showcase', id: id })
+          });
+          const data = await res.json();
+          if (data.status === 'ok') {
+            SHOWCASE_BUNDLES.splice(index, 1);
+            renderShowcaseGrid();
+            closeShowcaseModal();
+            closeDeleteConfirm();
+          } else {
+            console.error('Delete showcase failed', data.message);
+          }
+        } catch (err) {
+          console.error('Delete showcase error', err);
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', function() {
+        const addForm = document.getElementById('addShowcaseForm');
+        const imageInput = document.getElementById('newShowcaseImage');
+
+        if (imageInput) {
+          imageInput.addEventListener('change', previewNewShowcaseImage);
+        }
+
+        if (addForm) {
+          addForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const nameEl = document.getElementById('newShowcaseName');
+            const descEl = document.getElementById('newShowcaseDescription');
+            const flowersEl = document.getElementById('newShowcaseFlowers');
+            const fillersEl = document.getElementById('newShowcaseFillers');
+            const greeneryEl = document.getElementById('newShowcaseGreenery');
+            const imageEl = document.getElementById('newShowcaseImage');
+            if (!nameEl || !descEl || !flowersEl || !fillersEl || !greeneryEl) return;
+
+            const mainCount = parseInt(flowersEl.value.trim(), 10) || 0;
+            const fillersCount = parseInt(fillersEl.value.trim(), 10) || 0;
+            const greeneryCount = parseInt(greeneryEl.value.trim(), 10) || 0;
+            const metaText = `${mainCount} main flower${mainCount === 1 ? '' : 's'} • ${fillersCount} filler${fillersCount === 1 ? '' : 's'} • ${greeneryCount} free greenery${greeneryCount === 1 ? '' : 's'}`;
+            const newBundle = {
+              name: nameEl.value.trim(),
+              meta: metaText,
+              description: descEl.value.trim(),
+              imageUrl: null,
+              main: mainCount,
+              fillers: fillersCount,
+              greenery: greeneryCount,
+            };
+
+            const file = imageEl && imageEl.files && imageEl.files[0];
+            if (file) {
+              const reader = new FileReader();
+              reader.onload = function(evt) {
+                newBundle.imageUrl = evt.target.result;
+                submitShowcaseToServer(newBundle);
+              };
+              reader.readAsDataURL(file);
+            } else {
+              submitShowcaseToServer(newBundle);
+            }
+
+            closeAddShowcaseModal();
+            if (addForm) addForm.reset();
+            previewNewShowcaseImage();
+          });
+        }
+
+        renderShowcaseGrid();
+      });
+
+      function openAddShowcaseModal() {
+        if (!SHOWCASE_IS_ADMIN) return;
+        const modal = document.getElementById('addShowcaseModal');
+        if (modal) modal.classList.add('open');
+      }
+
+      function closeAddShowcaseModal() {
+        const modal = document.getElementById('addShowcaseModal');
+        if (modal) modal.classList.remove('open');
+      }
+
+      function previewNewShowcaseImage() {
+        const input = document.getElementById('newShowcaseImage');
+        const preview = document.getElementById('newShowcasePreview');
+        if (!preview) return;
+        if (input && input.files && input.files[0]) {
+          const file = input.files[0];
+          const reader = new FileReader();
+          reader.onload = function(evt) {
+            preview.classList.add('has-image');
+            preview.style.backgroundImage = 'url(' + evt.target.result + ')';
+            preview.textContent = '';
+          };
+          reader.readAsDataURL(file);
+        } else {
+          preview.classList.remove('has-image');
+          preview.style.backgroundImage = 'none';
+          preview.textContent = 'Image preview';
+        }
+      }
+
+      async function submitShowcaseToServer(bundle) {
+        try {
+          const res = await fetch(window.location.pathname, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              action: 'add_showcase',
+              name: bundle.name,
+              description: bundle.description,
+              main: bundle.main,
+              fillers: bundle.fillers,
+              greenery: bundle.greenery,
+              meta: bundle.meta,
+              image_url: bundle.imageUrl || ''
+            })
+          });
+          const data = await res.json();
+          if (data.status === 'ok' && data.item) {
+            bundle.showcase_id = data.item.showcase_id;
+            bundle.imageUrl = data.item.image_url || bundle.imageUrl;
+            SHOWCASE_BUNDLES.push(bundle);
+            renderShowcaseGrid();
+          } else {
+            console.error('Failed to save showcase', data.message);
+          }
+        } catch (err) {
+          console.error('Error saving showcase', err);
+        }
+      }
+
+      function addShowcaseItem(bundle) {
+        SHOWCASE_BUNDLES.push(bundle);
+        renderShowcaseGrid();
+      }
+    </script>
+
   <?php elseif ($page === 'checkout'): ?>
     <div class="checkout-wrap">
       <div class="co-left">
@@ -2719,6 +3206,19 @@ function factorial(int $n): int
             <input type="text" id="sku_scanner" placeholder="Search product or scan SKU..." style="width:280px;">
           </div>
         </div>
+
+        <?php
+          $bundleName = isset($_GET['bundle_name']) ? trim($_GET['bundle_name']) : '';
+          $bundleMain = isset($_GET['main']) ? intval($_GET['main']) : 0;
+          $bundleFillers = isset($_GET['fillers']) ? intval($_GET['fillers']) : 0;
+          $bundleGreenery = isset($_GET['greenery']) ? intval($_GET['greenery']) : 0;
+        ?>
+        <?php if ($bundleName !== ''): ?>
+          <div class="alert alert-info" style="margin-bottom:18px; display:flex; flex-direction:column; gap:8px;">
+            <div style="font-weight:700; color:var(--espresso);">Selected: <?= htmlspecialchars($bundleName, ENT_QUOTES, 'UTF-8') ?></div>
+            <div style="font-size:14px; color:var(--text-3);">Please select exactly <?= $bundleMain ?> main flower<?= $bundleMain === 1 ? '' : 's' ?>, <?= $bundleFillers ?> filler<?= $bundleFillers === 1 ? '' : 's' ?>, and <?= $bundleGreenery ?> free greenery<?= $bundleGreenery === 1 ? '' : 's' ?> to complete your bouquet.</div>
+          </div>
+        <?php endif; ?>
 
         <div class="cat-filter" id="cat-filter">
           <span class="cat-pill active" data-cat="">All</span>
@@ -3809,6 +4309,19 @@ function factorial(int $n): int
               <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
             </svg>
             Checkout
+          </a>
+
+          <a href="?page=showcase" class="sb-link <?= $page === 'showcase' ? 'active' : '' ?>">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 8h18" />
+              <path d="M3 8l2-3h14l2 3" />
+              <path d="M3 8v10h18V8" />
+              <path d="M3 12h18" />
+              <path d="M7 18h3" />
+              <path d="M14 18h3" />
+              <path d="M11 18v-5h2v5" />
+            </svg>
+            Flower Showcase
           </a>
 
           <?php if ($is_admin): ?>
