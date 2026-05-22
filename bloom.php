@@ -24,6 +24,9 @@ if ($conn->connect_error) {
   exit;
 }
 
+// Compute admin flag safely from session
+$is_admin = (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin');
+
 // ── Cart AJAX endpoints (must run before any page output)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
   header('Content-Type: application/json');
@@ -268,11 +271,6 @@ foreach ($promoCols as $col) {
     }
   }
 }
-
-// Simplified session model: no employee login/timeouts.
-// Do not force default user identity here — require explicit login to set these values.
-// Compute admin flag safely from session when present.
-$is_admin = (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin');
 
 // (duplicate cart handlers removed — top-of-file handlers are used)
 
