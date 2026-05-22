@@ -659,7 +659,7 @@ if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_P
       // If $image_path has a value, it means a new file was uploaded successfully
       if ($image_path !== "") {
         $stmt = $conn->prepare("UPDATE inventory SET product_name = ?, price = ?, stock_qty = ?, category_id = ?, image_url = ?, discount_id = ? WHERE sku = ?");
-        $stmt->bind_param("sdiiiss", $name, $price, $qty, $cat_id, $image_path, $disc_id, $old_sku);
+        $stmt->bind_param("sdissis", $name, $price, $qty, $cat_id, $image_path, $disc_id, $old_sku);
       } else {
         // Keeps your current image completely safe if no new file is uploaded
         $stmt = $conn->prepare("UPDATE inventory SET product_name = ?, price = ?, stock_qty = ?, category_id = ?, discount_id = ? WHERE sku = ?");
@@ -2314,13 +2314,17 @@ function factorial(int $n): int
       align-items: center;
       justify-content: center;
       overflow: hidden;
+      padding: 8px;
     }
 
     .inv-card-img img {
-      width: 100%;
-      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      display: block;
+      margin: auto;
       object-fit: contain;
-      padding: 6px;
       transition: transform .3s ease;
     }
 
@@ -5834,7 +5838,7 @@ if (!empty($r_sales_rows)):
             <div class="receipt-row"><span>Contact Number</span><span id="td_wallet_contact">&#8212;</span></div>
             <div class="receipt-row"><span>Account Name</span><span id="td_wallet_account">&#8212;</span></div>
             <div style="margin-top:8px;"><a id="td_proof_link" href="#" target="_blank" style="display: inline-block; margin-top: 10px;">
-            <img id="td_proof_img" src="" alt="Proof of Payment" style="display: none; max-width: 220px; max-height: 350px; width: auto; height: auto; object-fit: contain; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
+            <img id="td_proof_img" src="" alt="Proof of Payment" style="display: none; width: 100%; max-width: 100%; max-height: 350px; height: auto; object-fit: contain; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
           </a></div>
           </div>
         </div>
