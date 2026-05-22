@@ -24,6 +24,9 @@ if ($conn->connect_error) {
   exit;
 }
 
+// Compute admin flag safely from session
+$is_admin = (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin');
+
 // ── Cart AJAX endpoints (must run before any page output)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
   header('Content-Type: application/json');
@@ -307,11 +310,6 @@ foreach ($promoCols as $col) {
     }
   }
 }
-
-// Simplified session model: no employee login/timeouts.
-// Do not force default user identity here — require explicit login to set these values.
-// Compute admin flag safely from session when present.
-$is_admin = (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin');
 
 // (duplicate cart handlers removed — top-of-file handlers are used)
 
@@ -1249,9 +1247,25 @@ function factorial(int $n): int
 
     /* ── Sidebar ── */
     .sb-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
       padding: 26px 22px 20px;
       border-bottom: 1px solid rgba(212, 188, 169, .18);
       background: linear-gradient(180deg, rgba(124, 90, 68, .25) 0%, transparent 100%);
+    }
+
+    .sb-brand-text {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .sb-brand-logo {
+      width: 56px;
+      height: auto;
+      display: block;
+      margin: 0;
     }
 
     .sb-brand-name {
@@ -1259,12 +1273,13 @@ function factorial(int $n): int
       font-weight: 800;
       color: var(--taupe-l);
       letter-spacing: -.3px;
+      margin-bottom: 1px;
     }
 
     .sb-brand-sub {
       font-size: 12px;
       color: var(--taupe);
-      margin-top: 3px;
+      margin-top: 0;
       opacity: .75;
     }
 
@@ -2281,6 +2296,22 @@ function factorial(int $n): int
     .receipt-row {
       display: flex;
       justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .receipt-row span:first-child {
+      flex: 1 1 auto;
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .receipt-row span:last-child {
+      flex: 0 0 auto;
+      text-align: right;
+      min-width: 6ch;
     }
 
     /* ── Inventory grid ── */
@@ -2314,15 +2345,17 @@ function factorial(int $n): int
       align-items: center;
       justify-content: center;
       overflow: hidden;
-      padding: 8px;
+      position: relative;
     }
 
-    .inv-card-img img {
+.inv-card-img img {
       width: 100%;
       height: 100%;
-      display: block;
       object-fit: cover;
+      object-position: center;
+      padding: 6px;
       transition: transform .3s ease;
+      display: block;
     }
 
     .inv-card:hover .inv-card-img img {
@@ -3969,8 +4002,9 @@ function factorial(int $n): int
           body{font-family:'Courier New', monospace; padding:16px; color:#231f20; background:#fff; display:flex; justify-content:center; align-items:flex-start; min-height:100vh;}
           .receipt{max-width:360px;width:100%; margin:0 auto;}
           .receipt-title{font-weight:800;text-align:center;font-size:16px;margin-bottom:10px;}
-          .receipt-row{display:flex;justify-content:space-between;margin:6px 0;font-size:13px;}
-          .receipt-row span{display:inline-block;}
+          .receipt-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:6px 0;font-size:13px;}
+          .receipt-row span:first-child{flex:1 1 auto;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+          .receipt-row span:last-child{flex:0 0 auto;text-align:right;min-width:6ch;}
           .receipt-sep{border:none;border-top:1px solid #ddd;margin:10px 0;}
           @media print { body{margin:0; padding:0; display:block;} .receipt{margin:0 auto;} }
         `;
@@ -4325,8 +4359,9 @@ function factorial(int $n): int
                 body{font-family:'Courier New', monospace; padding:16px; color:#231f20; background:#fff; display:flex; justify-content:center; align-items:flex-start; min-height:100vh;}
                 .receipt{max-width:360px;width:100%; margin:0 auto;}
                 .receipt-title{font-weight:800;text-align:center;font-size:16px;margin-bottom:10px;}
-                .receipt-row{display:flex;justify-content:space-between;margin:6px 0;font-size:13px;}
-                .receipt-row span{display:inline-block;}
+                .receipt-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:6px 0;font-size:13px;}
+                .receipt-row span:first-child{flex:1 1 auto;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                .receipt-row span:last-child{flex:0 0 auto;text-align:right;min-width:6ch;}
                 .receipt-sep{border:none;border-top:1px solid #ddd;margin:10px 0;}
                 @media print { body{margin:0; padding:0; display:block;} .receipt{margin:0 auto;} }
               `;
@@ -4375,8 +4410,11 @@ function factorial(int $n): int
       </div>
       <nav class="sidebar">
         <div class="sb-brand">
-          <div class="sb-brand-name">Bloom POS</div>
-          <div class="sb-brand-sub">Flower Shop System</div>
+          <img src="logo.svg" alt="Bloom POS logo" class="sb-brand-logo">
+          <div class="sb-brand-text">
+            <div class="sb-brand-name">Bloom POS</div>
+            <div class="sb-brand-sub">Flower Shop System</div>
+          </div>
         </div>
 
         <div style="padding:12px 0 4px;">
@@ -4686,17 +4724,18 @@ function factorial(int $n): int
                             <polyline points="21 15 16 10 5 21" />
                           </svg>
                         <?php endif; ?>
+                        <?php if (!empty($item['disc_status']) && $item['disc_status'] == 1 && !empty($item['discount_value'])):
+                          $dlabel = in_array(strtolower($item['discount_type'] ?? ''), ['percentage', 'percent']) ? (floatval($item['discount_value']) . '% OFF') : ('₱' . number_format($item['discount_value'], 2) . ' OFF');
+                        ?>
+                          <span class="badge badge-blue" style="font-size:10px; position:absolute; top:8px; right:8px;"><?= htmlspecialchars($dlabel, ENT_QUOTES, 'UTF-8') ?></span>
+                        <?php endif; ?>
                       </div>
                       <div class="inv-card-body">
                         <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:4px;">
                           <span class="badge badge-gray" style="font-size:10px;"><?= htmlspecialchars($item['category_name'] ?? 'Uncategorized', ENT_QUOTES, 'UTF-8') ?></span>
                           <?php if ($item['stock_qty'] < 10): ?><span class="badge badge-red" style="font-size:10px;"><?= $item['stock_qty'] ?> left</span><?php endif; ?>
                         </div>
-                        <?php if (!empty($item['disc_status']) && $item['disc_status'] == 1 && !empty($item['discount_value'])):
-                          $dlabel = in_array(strtolower($item['discount_type'] ?? ''), ['percentage', 'percent']) ? (floatval($item['discount_value']) . '% OFF') : ('₱' . number_format($item['discount_value'], 2) . ' OFF');
-                        ?>
-                          <div style="margin-bottom:6px;"><span class="badge badge-blue" style="font-size:10px;"><?= htmlspecialchars($dlabel, ENT_QUOTES, 'UTF-8') ?></span></div>
-                        <?php endif; ?>
+                        
                         <div class="inv-card-name"><?= htmlspecialchars($item['product_name'], ENT_QUOTES, 'UTF-8') ?></div>
                         <div class="inv-card-sku"><?= $item['sku'] ?></div>
                         <div class="inv-card-price">
@@ -5835,7 +5874,7 @@ if (!empty($r_sales_rows)):
             <div class="receipt-row"><span>Contact Number</span><span id="td_wallet_contact">&#8212;</span></div>
             <div class="receipt-row"><span>Account Name</span><span id="td_wallet_account">&#8212;</span></div>
             <div style="margin-top:8px;"><a id="td_proof_link" href="#" target="_blank" style="display: inline-block; margin-top: 10px;">
-            <img id="td_proof_img" src="" alt="Proof of Payment" style="display: none; width: 100%; max-width: 100%; max-height: 350px; height: auto; object-fit: contain; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
+            <img id="td_proof_img" src="" alt="Proof of Payment" style="display: none; max-width: 220px; max-height: 350px; width: auto; height: auto; object-fit: contain; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
           </a></div>
           </div>
         </div>
@@ -5866,10 +5905,10 @@ if (!empty($r_sales_rows)):
         document.getElementById('td_total').textContent = '\u20B1' + (parseFloat(d.total_amount || 0).toFixed(2));
 
         if ((d.payment_method || '').toLowerCase() === 'cash') {
-          // Show amount received and change
+          // Show amount received and change using flex display to preserve receipt row layout
           document.getElementById('td_wallet_area').style.display = 'none';
-          document.getElementById('td_amount_received_row').style.display = 'block';
-          document.getElementById('td_change_row').style.display = 'block';
+          document.getElementById('td_amount_received_row').style.display = 'flex';
+          document.getElementById('td_change_row').style.display = 'flex';
           const amt = parseFloat(d.amount_tendered || d.amountReceived || 0) || 0;
           document.getElementById('td_amount_received').textContent = '\u20B1' + amt.toFixed(2);
           const change = amt - (parseFloat(d.total_amount || 0) || 0);
