@@ -2273,6 +2273,7 @@ function factorial(int $n): int
       align-items: center;
       justify-content: center;
       overflow: hidden;
+      position: relative;
     }
 
 .inv-card-img img {
@@ -4643,17 +4644,18 @@ function factorial(int $n): int
                             <polyline points="21 15 16 10 5 21" />
                           </svg>
                         <?php endif; ?>
+                        <?php if (!empty($item['disc_status']) && $item['disc_status'] == 1 && !empty($item['discount_value'])):
+                          $dlabel = in_array(strtolower($item['discount_type'] ?? ''), ['percentage', 'percent']) ? (floatval($item['discount_value']) . '% OFF') : ('₱' . number_format($item['discount_value'], 2) . ' OFF');
+                        ?>
+                          <span class="badge badge-blue" style="font-size:10px; position:absolute; top:8px; right:8px;"><?= htmlspecialchars($dlabel, ENT_QUOTES, 'UTF-8') ?></span>
+                        <?php endif; ?>
                       </div>
                       <div class="inv-card-body">
                         <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:4px;">
                           <span class="badge badge-gray" style="font-size:10px;"><?= htmlspecialchars($item['category_name'] ?? 'Uncategorized', ENT_QUOTES, 'UTF-8') ?></span>
                           <?php if ($item['stock_qty'] < 10): ?><span class="badge badge-red" style="font-size:10px;"><?= $item['stock_qty'] ?> left</span><?php endif; ?>
                         </div>
-                        <?php if (!empty($item['disc_status']) && $item['disc_status'] == 1 && !empty($item['discount_value'])):
-                          $dlabel = in_array(strtolower($item['discount_type'] ?? ''), ['percentage', 'percent']) ? (floatval($item['discount_value']) . '% OFF') : ('₱' . number_format($item['discount_value'], 2) . ' OFF');
-                        ?>
-                          <div style="margin-bottom:6px;"><span class="badge badge-blue" style="font-size:10px;"><?= htmlspecialchars($dlabel, ENT_QUOTES, 'UTF-8') ?></span></div>
-                        <?php endif; ?>
+                        
                         <div class="inv-card-name"><?= htmlspecialchars($item['product_name'], ENT_QUOTES, 'UTF-8') ?></div>
                         <div class="inv-card-sku"><?= $item['sku'] ?></div>
                         <div class="inv-card-price">
