@@ -538,13 +538,20 @@ if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
   function normalizeProductSku(string $sku): string {
     return strtoupper(trim($sku));
   }
-
-  if (isset($_POST["add_product"]) || isset($_POST["update_product"])) {
+if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_POST["add_variant_submit"])) {
     $is_update  = isset($_POST["update_product"]);
-    $sku        = normalizeProductSku(isset($_POST["sku"]) ? $_POST["sku"] : "");
+    $is_variant = isset($_POST["add_variant_submit"]);
+    
+    // Choose parameters dynamically based on form layout types
+    $sku        = normalizeProductSku(isset($_POST[$is_variant ? "new_sku" : "sku"]) ? $_POST[$is_variant ? "new_sku" : "sku"] : "");
     $old_sku    = normalizeProductSku(isset($_POST["old_sku"]) ? $_POST["old_sku"] : $sku);
-    $name       = $conn->real_escape_string(isset($_POST["name"]) ? $_POST["name"] : "");
-    $price      = floatval(str_replace(",", "", isset($_POST["price"]) ? $_POST["price"] : "0"));
+    $name       = $conn->real_escape_string(isset($_POST[$is_variant ? "variant_name" : "name"]) ? $_POST[$is_variant ? "variant_name" : "name"] : "");
+    $qty        = (int)(isset($_POST[$is_variant ? "variant_qty" : "qty"]) ? $_POST[$is_variant ? "variant_qty" : "qty"] : 0);
+
+    // Only fetch price/cat/discount from the form if it's NOT a variant 
+    $price      = !$is_variant ? floatval(str_replace(",", "", isset($_POST["price"]) ? $_POST["price"] : "0")) : 0.0;
+    $cat_id     = (!$is_variant && isset($_POST["category_id"]) && $_POST["category_id"] !== "") ? (int)$_POST["category_id"] : null;
+    $disc_id    = (!$is_variant && isset($_POST["discount_id"])  && $_POST["discount_id"]  !== "") ? (int)$_POST["discount_id"]  : null;
 
     if (!isValidProductSku($sku)) {
       $_SESSION['inventory_error'] = 'SKU must follow the format FLOWERNAME-001 and only use letters before the dash.';
@@ -552,19 +559,55 @@ if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
       exit;
     }
 
-    if (!is_float($price)) {
+    if (!$is_variant && !is_float($price)) {
       $price = 0.0;
     }
 
-    $qty        = (int)(isset($_POST["qty"])                              ? $_POST["qty"]          : 0);
-    $cat_id     = (isset($_POST["category_id"]) && $_POST["category_id"] !== "") ? (int)$_POST["category_id"] : null;
-    $disc_id    = (isset($_POST["discount_id"])  && $_POST["discount_id"]  !== "") ? (int)$_POST["discount_id"]  : null;
+    // Determine base image fallback path
     $image_path = "";
-    if (isset($_FILES["product_image"]) && $_FILES["product_image"]["error"] === 0) {
-      $dir = "uploads/";
-      if (!is_dir($dir)) mkdir($dir, 0777, true);
-      $image_path = $dir . time() . "_" . basename($_FILES["product_image"]["name"]);
-      move_uploaded_file($_FILES["product_image"]["tmp_name"], $image_path);
+    if ($is_variant) {
+      $orig_sku = normalizeProductSku(isset($_POST["original_sku"]) ? $_POST["original_sku"] : "");
+      $parent_stmt = $conn->prepare("SELECT price, category_id, discount_id, image_url FROM inventory WHERE sku = ?");
+      if ($parent_stmt) {
+        $parent_stmt->bind_param("s", $orig_sku);
+        $parent_stmt->execute();
+        $parent_res = $parent_stmt->get_result()->fetch_assoc();
+        if ($parent_res) {
+          $price      = floatval($parent_res['price']);
+          $cat_id     = $parent_res['category_id'];
+          $disc_id    = $parent_res['discount_id'];
+          $image_path = $parent_res['image_url']; // Fallback variant image to parent's URL
+        }
+        $parent_stmt->close();
+      }
+    }
+
+    // PROCESS FILE UPLOADS FOR BOTH REGULAR EDITS AND VARIANTS
+    $image_upload_error = "";
+    if (isset($_FILES["product_image"]) && $_FILES["product_image"]["error"] !== UPLOAD_ERR_NO_FILE) {
+      if ($_FILES["product_image"]["error"] !== UPLOAD_ERR_OK) {
+        $upload_errors = [
+          UPLOAD_ERR_INI_SIZE => "File is larger than upload_max_filesize",
+          UPLOAD_ERR_FORM_SIZE => "File is larger than form MAX_FILE_SIZE",
+          UPLOAD_ERR_PARTIAL => "File was only partially uploaded",
+          UPLOAD_ERR_NO_TMP_DIR => "Missing temporary folder",
+          UPLOAD_ERR_CANT_WRITE => "Failed to write file to disk",
+          UPLOAD_ERR_EXTENSION => "File upload stopped by extension"
+        ];
+        $image_upload_error = $upload_errors[$_FILES["product_image"]["error"]] ?? "Unknown upload error";
+      } else {
+        $dir = "uploads/";
+        if (!is_dir($dir)) mkdir($dir, 0777, true);
+        $uploaded_file = $dir . time() . "_" . basename($_FILES["product_image"]["name"]);
+        if (move_uploaded_file($_FILES["product_image"]["tmp_name"], $uploaded_file)) {
+          $image_path = $uploaded_file; // Explicitly assigns to $image_path so updates pick it up!
+        } else {
+          $image_upload_error = "Failed to move uploaded file. Check directory permissions.";
+        }
+      }
+      if ($image_upload_error !== "") {
+        $_SESSION['inventory_warning'] = "Product saved but image upload failed: " . $image_upload_error;
+      }
     }
 
     if ($is_update) {
@@ -573,14 +616,18 @@ if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
         header('Location: ?page=inventory&tab=items');
         exit;
       }
-      if ($image_path) {
+      
+      // If $image_path has a value, it means a new file was uploaded successfully
+      if ($image_path !== "") {
         $stmt = $conn->prepare("UPDATE inventory SET product_name = ?, price = ?, stock_qty = ?, category_id = ?, image_url = ?, discount_id = ? WHERE sku = ?");
         $stmt->bind_param("sdiiiss", $name, $price, $qty, $cat_id, $image_path, $disc_id, $old_sku);
       } else {
+        // Keeps your current image completely safe if no new file is uploaded
         $stmt = $conn->prepare("UPDATE inventory SET product_name = ?, price = ?, stock_qty = ?, category_id = ?, discount_id = ? WHERE sku = ?");
         $stmt->bind_param("sdiiis", $name, $price, $qty, $cat_id, $disc_id, $old_sku);
       }
     } else {
+      // This path handles both regular new products AND variants seamlessly
       $stmt = $conn->prepare("INSERT INTO inventory (sku, product_name, price, stock_qty, category_id, discount_id, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)");
       $stmt->bind_param("ssdiiis", $sku, $name, $price, $qty, $cat_id, $disc_id, $image_path);
     }
@@ -2230,12 +2277,14 @@ function factorial(int $n): int
       overflow: hidden;
     }
 
-    .inv-card-img img {
+.inv-card-img img {
       width: 100%;
       height: 100%;
-      object-fit: contain;
+      object-fit: cover;
+      object-position: center;
       padding: 6px;
       transition: transform .3s ease;
+      display: block;
     }
 
     .inv-card:hover .inv-card-img img {
@@ -3253,7 +3302,7 @@ function factorial(int $n): int
                                     ]), ENT_QUOTES, 'UTF-8') ?>)">
                 <div class="prod-img">
                   <?php if (!empty($item['image_url'])): ?>
-                    <img src="<?= htmlspecialchars($item['image_url'], ENT_QUOTES, 'UTF-8') ?>" alt="">
+                    <img src="/Bloom_POS/<?= htmlspecialchars($item['image_url'], ENT_QUOTES, 'UTF-8') ?>" alt="">
                   <?php else: ?>
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#D4BCA9" stroke-width="1.5">
                       <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -4557,6 +4606,13 @@ function factorial(int $n): int
               <?php unset($_SESSION['inventory_error']); ?>
             <?php endif; ?>
 
+            <?php if (isset($_SESSION['inventory_warning'])): ?>
+              <div class="alert alert-warning" style="margin:0 0 16px;">
+                <?= htmlspecialchars($_SESSION['inventory_warning'], ENT_QUOTES, 'UTF-8') ?>
+              </div>
+              <?php unset($_SESSION['inventory_warning']); ?>
+            <?php endif; ?>
+
             <div class="tabs">
               <a href="?page=inventory&tab=items" class="tab-link <?= $activeTab === 'items' ? 'active' : '' ?>">Products</a>
               <a href="?page=inventory&tab=categories" class="tab-link <?= $activeTab === 'categories' ? 'active' : '' ?>">Categories</a>
@@ -4582,7 +4638,7 @@ function factorial(int $n): int
                         <button type="submit" class="inv-del-btn" onclick="event.stopPropagation();" title="Delete">&times;</button>
                       </form>
                       <div class="inv-card-img">
-                        <?php if (!empty($item['image_url'])): ?><img src="<?= htmlspecialchars($item['image_url'], ENT_QUOTES, 'UTF-8') ?>" alt=""><?php else: ?>
+                        <?php if (!empty($item['image_url'])): ?><img src="/Bloom_POS/<?= htmlspecialchars($item['image_url'], ENT_QUOTES, 'UTF-8') ?>" alt=""><?php else: ?>
                           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#D4BCA9" stroke-width="1.5">
                             <rect x="3" y="3" width="18" height="18" rx="2" />
                             <circle cx="8.5" cy="8.5" r="1.5" />
@@ -4761,7 +4817,13 @@ function factorial(int $n): int
                     </select>
                   </div>
                 </div>
-                <div class="form-group"><label>Product Image</label><input type="file" name="product_image" accept="image/*" style="padding:6px;"></div>
+                <div class="form-group">
+                  <label>Product Image</label>
+                  <div id="image_preview_container" style="margin-bottom:8px; display:none;">
+                    <img id="image_preview" style="max-width:200px; max-height:200px; border-radius:4px; border:1px solid #ddd; padding:4px;">
+                  </div>
+                  <input type="file" name="product_image" id="product_image_input" accept="image/*" style="padding:6px;" onchange="previewImage(this)">
+                </div>
                 <button type="submit" id="prod_submit_btn" name="add_product" class="btn btn-primary btn-full" style="margin-top:6px;">Save Product</button>
               </form>
             </div>
@@ -4774,7 +4836,7 @@ function factorial(int $n): int
                 <span class="modal-title">Add Product Variant</span>
                 <button class="modal-close" type="button" onclick="document.getElementById('addVariantModal').classList.remove('open')">&times;</button>
               </div>
-              <form method="POST" action="?page=inventory&tab=items">
+              <form method="POST" action="?page=inventory&tab=items" enctype="multipart/form-data">
                 <input type="hidden" name="original_sku" id="variant_orig_sku">
                 
                 <div class="form-group">
@@ -4795,6 +4857,12 @@ function factorial(int $n): int
                 <div class="form-group">
                   <label>Initial Stock Quantity</label>
                   <input type="number" name="variant_qty" placeholder="0" min="0" required>
+                </div>
+
+                <div class="form-group">
+                  <label>Variant Image (Optional)</label>
+                  <input type="file" name="product_image" accept="image/*" style="padding:6px; border:1px solid #ccc; width:100%; border-radius:4px;">
+                  <span style="font-size:11px; color:#666;">Leave empty to inherit the parent product's image.</span>
                 </div>
                 
                 <p style="font-size:12px; color:#777; margin-bottom:14px;">
@@ -4889,11 +4957,17 @@ function factorial(int $n): int
           </div>
 
           <script>
-            function openAddModal() {
+              function openAddModal() {
               document.getElementById('prod_modal_title').textContent = 'New Product';
               document.getElementById('prod_submit_btn').name = 'add_product';
               document.getElementById('prod_form').reset();
               document.getElementById('hidden_sku').value = '';
+              document.getElementById('image_preview_container').style.display = 'none';
+              
+              // Wipes any cached file selection out of the input element
+              const imgInput = document.getElementById('product_image_input');
+              if (imgInput) imgInput.value = '';
+
               const skuEl = document.getElementById('form_sku');
               if (skuEl) {
                 skuEl.readOnly = false;
@@ -4930,8 +5004,38 @@ function factorial(int $n): int
               document.getElementById('form_qty').value = data.stock_qty;
               document.getElementById('form_cat').value = data.category_id || '';
               document.getElementById('form_disc').value = data.discount_id || '';
+              
+              // Show current image if editing and image exists
+              if (data.image_url && data.image_url !== '') {
+                const previewContainer = document.getElementById('image_preview_container');
+                const previewImg = document.getElementById('image_preview');
+                previewImg.src = data.image_url;
+                previewContainer.style.display = 'block';
+              } else {
+                document.getElementById('image_preview_container').style.display = 'none';
+              }
+              
+              // Reset file input
+              document.getElementById('product_image_input').value = '';
+              
               document.getElementById('productModal').classList.add('open');
               document.getElementById('form_qty').focus();
+            }
+            
+            function previewImage(input) {
+              const previewContainer = document.getElementById('image_preview_container');
+              const previewImg = document.getElementById('image_preview');
+              
+              if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                  previewImg.src = e.target.result;
+                  previewContainer.style.display = 'block';
+                };
+                reader.readAsDataURL(input.files[0]);
+              } else {
+                previewContainer.style.display = 'none';
+              }
             }
 
             function openEditModalBySku(sku) {
@@ -5689,7 +5793,9 @@ if (!empty($r_sales_rows)):
           <div id="td_wallet_area" style="display:none;margin-top:12px;">
             <div class="receipt-row"><span>Contact Number</span><span id="td_wallet_contact">&#8212;</span></div>
             <div class="receipt-row"><span>Account Name</span><span id="td_wallet_account">&#8212;</span></div>
-            <div style="margin-top:8px;"><a id="td_proof_link" href="#" target="_blank"><img id="td_proof_img" src="" alt="Proof" style="max-width:160px; border-radius:6px; border:1px solid #ddd; display:none;"></a></div>
+            <div style="margin-top:8px;"><a id="td_proof_link" href="#" target="_blank" style="display: inline-block; margin-top: 10px;">
+            <img id="td_proof_img" src="" alt="Proof of Payment" style="display: none; max-width: 220px; max-height: 350px; width: auto; height: auto; object-fit: contain; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
+          </a></div>
           </div>
         </div>
       </div>
