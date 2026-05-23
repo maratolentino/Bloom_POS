@@ -281,9 +281,7 @@ ALTER TABLE `discounts`
 --
 -- Indexes for table `session_history`
 --
-ALTER TABLE `session_history`
-  ADD KEY `idx_employee_active` (`employee_id`, `logout_time`),
-  ADD KEY `idx_employee_login` (`employee_id`, `login_time`);
+-- Indexes already defined in CREATE TABLE for session_history; do not add them again.
 
 --
 -- Indexes for table `inventory`

@@ -3373,12 +3373,19 @@ function factorial(int $n): int
         showcaseDeleteId = null;
 
         try {
-          const res = await fetch(window.location.pathname, {
+          const endpoint = window.location.origin + window.location.pathname;
+          console.log('Deleting showcase', id, 'via', endpoint);
+          const res = await fetch(endpoint, {
             method: 'POST',
+            credentials: 'same-origin',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({ action: 'delete_showcase', id: id })
           });
           const data = await res.json();
+          if (!res.ok) {
+            console.error('Delete showcase HTTP error', res.status, data);
+            return;
+          }
           if (data.status === 'ok') {
             SHOWCASE_BUNDLES.splice(index, 1);
             renderShowcaseGrid();
@@ -3386,7 +3393,7 @@ function factorial(int $n): int
             closeShowcaseModal();
             closeDeleteConfirm();
           } else {
-            console.error('Delete showcase failed', data.message);
+            console.error('Delete showcase failed', data.message, data);
           }
         } catch (err) {
           console.error('Delete showcase error', err);
@@ -3427,20 +3434,24 @@ function factorial(int $n): int
             };
 
             const file = imageEl && imageEl.files && imageEl.files[0];
+            const submitBundle = function() {
+              submitShowcaseToServer(newBundle).then(() => {
+                closeAddShowcaseModal();
+                if (addForm) addForm.reset();
+                previewNewShowcaseImage();
+              });
+            };
+
             if (file) {
               const reader = new FileReader();
               reader.onload = function(evt) {
                 newBundle.imageUrl = evt.target.result;
-                submitShowcaseToServer(newBundle);
+                submitBundle();
               };
               reader.readAsDataURL(file);
             } else {
-              submitShowcaseToServer(newBundle);
+              submitBundle();
             }
-
-            closeAddShowcaseModal();
-            if (addForm) addForm.reset();
-            previewNewShowcaseImage();
           });
         }
 
@@ -3508,8 +3519,11 @@ function factorial(int $n): int
 
       async function submitShowcaseToServer(bundle) {
         try {
-          const res = await fetch(window.location.pathname, {
+          const endpoint = window.location.origin + window.location.pathname;
+          console.log('Adding showcase', bundle, 'via', endpoint);
+          const res = await fetch(endpoint, {
             method: 'POST',
+            credentials: 'same-origin',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
               action: 'add_showcase',
@@ -3523,6 +3537,10 @@ function factorial(int $n): int
             })
           });
           const data = await res.json();
+          if (!res.ok) {
+            console.error('Add showcase HTTP error', res.status, data);
+            return;
+          }
           if (data.status === 'ok' && data.item) {
             bundle.showcase_id = data.item.showcase_id;
             bundle.imageUrl = data.item.image_url || bundle.imageUrl;
@@ -3531,7 +3549,7 @@ function factorial(int $n): int
             // persist client-side as fallback (for data-URL images)
             try { if (window.saveShowcaseLocal) window.saveShowcaseLocal(); } catch(e) {}
           } else {
-            console.error('Failed to save showcase', data.message);
+            console.error('Failed to save showcase', data.message, data);
           }
         } catch (err) {
           console.error('Error saving showcase', err);
