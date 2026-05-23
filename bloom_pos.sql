@@ -16,6 +16,7 @@ SET time_zone = "+00:00";
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
 /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
 /*!40101 SET NAMES utf8mb4 */;
+SET FOREIGN_KEY_CHECKS = 0;
 
 --
 -- Database: `bloom_pos`
@@ -117,7 +118,8 @@ CREATE TABLE `employees` (
   `role` varchar(50) NOT NULL DEFAULT 'cashier',
   `job_role` varchar(100) DEFAULT NULL,
   `passcode` varchar(255) NOT NULL,
-  `photo_url` varchar(255) DEFAULT NULL
+  `photo_url` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -365,6 +367,7 @@ ALTER TABLE `sales`
 ALTER TABLE `sale_items`
   ADD CONSTRAINT `fk_si_sale` FOREIGN KEY (`transaction_id`) REFERENCES `sales` (`transaction_id`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_si_sku` FOREIGN KEY (`sku`) REFERENCES `inventory` (`sku`) ON DELETE CASCADE;
+SET FOREIGN_KEY_CHECKS = 1;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
