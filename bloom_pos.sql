@@ -131,6 +131,26 @@ INSERT INTO `employees` (`employee_id`, `full_name`, `role`, `job_role`, `passco
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `session_history`
+--
+
+CREATE TABLE `session_history` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `employee_id` varchar(50) NOT NULL,
+  `login_date` date NOT NULL,
+  `login_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `logout_time` datetime DEFAULT NULL,
+  `duration_seconds` int(11) DEFAULT NULL,
+  `duration` varchar(16) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_employee_active` (`employee_id`, `logout_time`),
+  KEY `idx_employee_login` (`employee_id`, `login_time`),
+  CONSTRAINT `fk_session_history_employee` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `inventory`
 --
 
@@ -254,6 +274,14 @@ ALTER TABLE `discounts`
 --
 ALTER TABLE `employees`
   ADD PRIMARY KEY (`employee_id`);
+
+--
+-- Indexes for table `session_history`
+--
+ALTER TABLE `session_history`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_employee_active` (`employee_id`, `logout_time`),
+  ADD KEY `idx_employee_login` (`employee_id`, `login_time`);
 
 --
 -- Indexes for table `inventory`

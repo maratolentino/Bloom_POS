@@ -2,6 +2,7 @@
 
 // Include session handler (cart helper functions)
 require_once 'session.php';
+require_once __DIR__ . '/record.php';
 
 // ── Basic setup
 $remembered_id = isset($_COOKIE['bloom_remember_id']) ? htmlspecialchars($_COOKIE['bloom_remember_id'], ENT_QUOTES, 'UTF-8') : '';
@@ -26,6 +27,15 @@ if ($conn->connect_error) {
 
 // Compute admin flag safely from session
 $is_admin = (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin');
+
+// ── Profile session history
+$sessionHistoryRows = [];
+$activeSession = null;
+if (isset($_SESSION['user_id']) && $_SESSION['user_id'] !== '') {
+  ensureSessionHistoryTable($conn);
+  $activeSession = getActiveSessionHistory($conn, $_SESSION['user_id']);
+  $sessionHistoryRows = getSessionHistory($conn, $_SESSION['user_id'], 20);
+}
 
 // ── Cart AJAX endpoints (must run before any page output)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
@@ -356,6 +366,8 @@ if ($page === "login" && $_SERVER["REQUEST_METHOD"] === "POST") {
       $_SESSION['user_name'] = $row['full_name'];
       $_SESSION['user_role'] = $row['role'];
       $_SESSION['user_photo'] = isset($row['photo_url']) ? $row['photo_url'] : '';
+      ensureSessionHistoryTable($conn);
+      recordLogin($conn, $row['employee_id']);
       header("Location: ?page=dashboard");
       exit;
     }
@@ -425,6 +437,11 @@ if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && $is_admin) 
 // ── Logout ────────────────────────────────────────────────────
 if ($page === "logout") {
   setcookie('bloom_remember_id', '', time() - 3600, '/'); // ← delete cookie
+  $logoutEmployee = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : '';
+  if ($logoutEmployee !== '') {
+    ensureSessionHistoryTable($conn);
+    recordLogout($conn, $logoutEmployee, getActiveSessionHistoryId());
+  }
   destroySession();
   header("Location: ?page=login");
   exit;
@@ -2001,6 +2018,21 @@ function factorial(int $n): int
       white-space: nowrap;
       padding: 13px 20px;
       font-size: 14px;
+    }
+
+    .modal-box.profile .profile-table tr.active-session-row {
+      background: rgba(220, 242, 222, 0.45);
+    }
+
+    .modal-box.profile .profile-table .text-success {
+      color: var(--green);
+    }
+
+    .modal-box.profile .profile-table .live-session-timer {
+      font-weight: 700;
+      color: var(--espresso);
+      display: inline-block;
+      min-width: 70px;
     }
 
     .modal-box.wide {
@@ -5059,9 +5091,33 @@ function factorial(int $n): int
                   </thead>
 
                   <tbody>
-                    <tr>
-                      <td colspan="4" style="text-align:center; padding:24px; color:var(--text-3); font-style:italic;">No login records to display yet.</td>
-                    </tr>
+                    <?php if (!empty($sessionHistoryRows)): ?>
+                      <?php foreach ($sessionHistoryRows as $sessionRow): ?>
+                        <?php
+                          $loginDate = date('M d, Y', strtotime($sessionRow['login_date']));
+                          $loginTime = date('g:i A', strtotime($sessionRow['login_time']));
+                          $isActive = $sessionRow['logout_time'] === null;
+                          $logoutTime = $isActive ? '<span class="text-success" style="font-weight:600;">Active</span>' : date('g:i A', strtotime($sessionRow['logout_time']));
+                          $durationText = htmlspecialchars($sessionRow['duration'] ?: '00:00:00', ENT_QUOTES, 'UTF-8');
+                        ?>
+                        <tr class="<?= $isActive ? 'active-session-row' : '' ?>">
+                          <td><?= htmlspecialchars($loginDate, ENT_QUOTES, 'UTF-8') ?></td>
+                          <td><?= htmlspecialchars($loginTime, ENT_QUOTES, 'UTF-8') ?></td>
+                          <td><?= $logoutTime ?></td>
+                          <td class="session-duration-cell" data-active="<?= $isActive ? '1' : '0' ?>" data-login="<?= htmlspecialchars($sessionRow['login_time'], ENT_QUOTES, 'UTF-8') ?>" data-prior-duration="<?= isset($sessionRow['duration_seconds']) ? (int)$sessionRow['duration_seconds'] : 0 ?>">
+                            <?php if ($isActive): ?>
+                              <span class="live-session-timer"><?= $durationText ?></span>
+                            <?php else: ?>
+                              <?= $durationText ?>
+                            <?php endif; ?>
+                          </td>
+                        </tr>
+                      <?php endforeach; ?>
+                    <?php else: ?>
+                      <tr>
+                        <td colspan="4" style="text-align:center; padding:24px; color:var(--text-3); font-style:italic;">No login records to display yet.</td>
+                      </tr>
+                    <?php endif; ?>
                   </tbody>
                 </table>
               </div>
@@ -5078,6 +5134,40 @@ function factorial(int $n): int
             }
           })();
         </script>
+        <?php if ($activeSession): ?>
+          <script>
+            (function() {
+              function pad(value) {
+                return String(value).padStart(2, '0');
+              }
+
+              function updateActiveTimer(cell) {
+                if (!cell) return;
+                var loginTime = cell.dataset.login;
+                var priorSeconds = parseInt(cell.dataset.priorDuration || '0', 10);
+                if (!loginTime) return;
+
+                var start = new Date(loginTime.replace(' ', 'T'));
+                if (isNaN(start.getTime())) return;
+
+                var elapsed = Math.floor((Date.now() - start.getTime()) / 1000);
+                if (elapsed < 0) elapsed = 0;
+                var total = priorSeconds + elapsed;
+                var hours = pad(Math.floor(total / 3600));
+                var mins = pad(Math.floor((total % 3600) / 60));
+                var secs = pad(total % 60);
+                cell.querySelector('.live-session-timer').textContent = hours + ':' + mins + ':' + secs;
+              }
+
+              var durationCell = document.querySelector('.session-duration-cell[data-active="1"]');
+              if (!durationCell) return;
+              updateActiveTimer(durationCell);
+              setInterval(function() {
+                updateActiveTimer(durationCell);
+              }, 1000);
+            })();
+          </script>
+        <?php endif; ?>
       </nav>
 
       <main class="main">
