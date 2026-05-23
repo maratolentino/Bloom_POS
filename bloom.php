@@ -3656,6 +3656,7 @@ function factorial(int $n): int
                   <?php endif; ?>
                 </div>
                 <div class="prod-info">
+                  <span class="badge badge-gray" style="font-size:10px; margin-bottom:6px; display:inline-block;"><?= htmlspecialchars($item['category_name'] ?? 'Uncategorized', ENT_QUOTES, 'UTF-8') ?></span>
                   <?php if (!empty($item['disc_status']) && $item['disc_status'] == 1 && !empty($item['discount_value'])): 
                     $dlabel = in_array(strtolower($item['discount_type'] ?? ''), ['percentage', 'percent']) ? (floatval($item['discount_value']) . '% OFF') : ('₱' . number_format($item['discount_value'], 2) . ' OFF');
                   ?>
