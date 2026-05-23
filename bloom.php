@@ -45,6 +45,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
         $stmt->fetch();
         $stmt->close();
       }
+
+      
+
+      
       if ($stockQty === null) {
         http_response_code(400);
         echo json_encode(['status'=>'error','message'=>'Invalid product SKU']);
@@ -3136,6 +3140,44 @@ function factorial(int $n): int
 
     <script>
       const SHOWCASE_BUNDLES = <?= json_encode($showcaseBundles, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+      // Normalize server-side keys to friendly JS names (image_url -> imageUrl)
+      (function(){
+        for (let i = 0; i < SHOWCASE_BUNDLES.length; i++) {
+          const b = SHOWCASE_BUNDLES[i];
+          if (b && b.image_url && !b.imageUrl) b.imageUrl = b.image_url;
+          if (b && !b.meta) b.meta = `${(b.main||0)} main • ${(b.fillers||0)} filler • ${(b.greenery||0)} greenery`;
+        }
+
+        // Merge any locally persisted showcase bundles (fallback for images saved as data-URLs)
+        try {
+          const raw = localStorage.getItem('showcase_bundles_local');
+          if (raw) {
+            const local = JSON.parse(raw) || [];
+            local.forEach(l => {
+              // avoid duplicate if server already returned item with same id or name
+              const exists = SHOWCASE_BUNDLES.some(s => (s.showcase_id && l.showcase_id && String(s.showcase_id) === String(l.showcase_id)) || (s.name && l.name && s.name === l.name));
+              if (!exists) {
+                // ensure keys
+                if (l.image_url && !l.imageUrl) l.imageUrl = l.image_url;
+                if (!l.meta) l.meta = `${(l.main||0)} main • ${(l.fillers||0)} filler • ${(l.greenery||0)} greenery`;
+                SHOWCASE_BUNDLES.push(l);
+              } else {
+                // if exists but local has an imageUrl and server doesn't, merge image
+                const match = SHOWCASE_BUNDLES.find(s => (s.showcase_id && l.showcase_id && String(s.showcase_id) === String(l.showcase_id)) || (s.name && l.name && s.name === l.name));
+                if (match && !match.imageUrl && l.imageUrl) match.imageUrl = l.imageUrl;
+              }
+            });
+          }
+        } catch (e) { console.error('showcase local merge error', e); }
+
+        // ensure storage sync helper
+        window.saveShowcaseLocal = function() {
+          try {
+            const toSave = SHOWCASE_BUNDLES.map(b => ({ showcase_id: b.showcase_id, name: b.name, description: b.description, main: b.main, fillers: b.fillers, greenery: b.greenery, meta: b.meta, imageUrl: b.imageUrl }));
+            localStorage.setItem('showcase_bundles_local', JSON.stringify(toSave));
+          } catch(e) { console.error('persist showcase local error', e); }
+        };
+      })();
       const SHOWCASE_IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
       let subSlide = 0;
 
@@ -3303,6 +3345,7 @@ function factorial(int $n): int
           if (data.status === 'ok') {
             SHOWCASE_BUNDLES.splice(index, 1);
             renderShowcaseGrid();
+            try { if (window.saveShowcaseLocal) window.saveShowcaseLocal(); } catch(e) {}
             closeShowcaseModal();
             closeDeleteConfirm();
           } else {
@@ -3365,7 +3408,35 @@ function factorial(int $n): int
         }
 
         renderShowcaseGrid();
+        // ensure persisted showcase local storage is up-to-date
+        try { if (window.saveShowcaseLocal) window.saveShowcaseLocal(); } catch(e) {}
+        // apply category restrictions UI for selected bundle
+        try { if (typeof updateCategoryRestrictions === 'function') updateCategoryRestrictions(); } catch(e) {}
+
+        // show selected bundle info in cart header (right panel)
+        try {
+          if (SELECTED_BUNDLE && SELECTED_BUNDLE.name) {
+            const cartTitle = document.querySelector('.co-cart-title');
+            if (cartTitle) {
+              let info = document.getElementById('cart_bundle_info');
+              if (!info) {
+                info = document.createElement('div');
+                info.id = 'cart_bundle_info';
+                info.style.fontSize = '12px';
+                info.style.color = 'var(--text-3)';
+                info.style.marginTop = '6px';
+                cartTitle.parentNode.insertBefore(info, cartTitle.nextSibling);
+              }
+              info.textContent = `Bundle: ${SELECTED_BUNDLE.name} — ${SELECTED_BUNDLE.main} main, ${SELECTED_BUNDLE.fillers} filler${SELECTED_BUNDLE.fillers===1? '':'s'}, ${SELECTED_BUNDLE.greenery} greenery`;
+            }
+          }
+        } catch(e) { console.error(e); }
       });
+
+      // Ensure local persisted showcases are saved when we modify the client list
+      function persistShowcasesClient() {
+        try { if (window.saveShowcaseLocal) window.saveShowcaseLocal(); } catch(e) {}
+      }
 
       function openAddShowcaseModal() {
         if (!SHOWCASE_IS_ADMIN) return;
@@ -3420,6 +3491,8 @@ function factorial(int $n): int
             bundle.imageUrl = data.item.image_url || bundle.imageUrl;
             SHOWCASE_BUNDLES.push(bundle);
             renderShowcaseGrid();
+            // persist client-side as fallback (for data-URL images)
+            try { if (window.saveShowcaseLocal) window.saveShowcaseLocal(); } catch(e) {}
           } else {
             console.error('Failed to save showcase', data.message);
           }
@@ -3492,6 +3565,7 @@ function factorial(int $n): int
               $base_with_vat = floatval($item['price']) * (1 + $taxRate);
             ?>
               <div class="prod-tile"
+                data-sku="<?= htmlspecialchars($item['sku'], ENT_QUOTES, 'UTF-8') ?>"
                 data-cat="<?= htmlspecialchars($item['category_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                 data-name="<?= strtolower(htmlspecialchars($item['product_name'], ENT_QUOTES, 'UTF-8')) ?>"
                 onclick="addToCart(<?= htmlspecialchars(json_encode([
@@ -3499,6 +3573,7 @@ function factorial(int $n): int
                                       'product_name' => $item['product_name'],
                                       'price'        => $ep,
                                       'stock_qty'    => $item['stock_qty'],
+                                      'category'     => $item['category_name'] ?? ''
                                     ]), ENT_QUOTES, 'UTF-8') ?>)">
                 <div class="prod-img">
                   <?php if (!empty($item['image_url'])): ?>
@@ -3625,6 +3700,10 @@ function factorial(int $n): int
           <input type="hidden" name="promotion_id" id="f_promotion_id">
           <input type="hidden" name="promotion_name" id="f_promotion_name">
           <input type="hidden" name="promotion_type" id="f_promotion_type">
+          <input type="hidden" name="bundle_name" id="f_bundle_name">
+          <input type="hidden" name="bundle_main" id="f_bundle_main">
+          <input type="hidden" name="bundle_fillers" id="f_bundle_fillers">
+          <input type="hidden" name="bundle_greenery" id="f_bundle_greenery">
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
             <div>
               <div style="font-size:11px; font-weight:700; color:var(--text-3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:10px;">Receipt Preview</div>
@@ -3694,6 +3773,65 @@ function factorial(int $n): int
       let selectedCustomerId = '';
       const STORE_INFO = <?= json_encode($store_info, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       const allProducts = <?= json_encode($inventory) ?>;
+      // Normalize inventory product objects to include a consistent `category` property
+      (function(){
+        try {
+          for (let i = 0; i < allProducts.length; i++) {
+            const p = allProducts[i];
+            if (!p) continue;
+            if (!p.category && p.category_name) p.category = p.category_name;
+            // make sure category is a simple string
+            if (p.category === undefined || p.category === null) p.category = '';
+          }
+        } catch(e) { console.error('normalize allProducts error', e); }
+      })();
+      // Selected showcase bundle (if any) passed via query params
+      let SELECTED_BUNDLE = {
+        name: <?= json_encode($bundleName) ?> || '',
+        main: <?= intval($bundleMain) ?> || 0,
+        fillers: <?= intval($bundleFillers) ?> || 0,
+        greenery: <?= intval($bundleGreenery) ?> || 0
+      };
+
+      function setSelectedBundle(obj) {
+        try {
+          SELECTED_BUNDLE = Object.assign({ name: '', main:0, fillers:0, greenery:0 }, obj || {});
+          // persist selection
+          try { localStorage.setItem('selected_bundle', JSON.stringify(SELECTED_BUNDLE)); } catch(e) {}
+          // update cart header info
+          try {
+            const cartTitle = document.querySelector('.co-cart-title');
+            if (cartTitle) {
+              let info = document.getElementById('cart_bundle_info');
+              if (!info) {
+                info = document.createElement('div');
+                info.id = 'cart_bundle_info';
+                info.style.fontSize = '12px';
+                info.style.color = 'var(--text-3)';
+                info.style.marginTop = '6px';
+                cartTitle.parentNode.insertBefore(info, cartTitle.nextSibling);
+              }
+              if (SELECTED_BUNDLE && SELECTED_BUNDLE.name) {
+                info.textContent = `Bundle: ${SELECTED_BUNDLE.name} — ${SELECTED_BUNDLE.main} main, ${SELECTED_BUNDLE.fillers} filler${SELECTED_BUNDLE.fillers===1? '':'s'}, ${SELECTED_BUNDLE.greenery} greenery`;
+              } else {
+                info.textContent = '';
+              }
+            }
+          } catch(e) {}
+          // update UI restrictions
+          try { if (typeof updateCategoryRestrictions === 'function') updateCategoryRestrictions(); } catch(e) {}
+        } catch(e) { console.error('setSelectedBundle error', e); }
+      }
+
+      // restore persisted selection if no server-provided bundle
+      try {
+        if ((!SELECTED_BUNDLE || !SELECTED_BUNDLE.name) && localStorage.getItem('selected_bundle')) {
+          const sb = JSON.parse(localStorage.getItem('selected_bundle')) || null;
+          if (sb && sb.name) setSelectedBundle(sb);
+        } else if (SELECTED_BUNDLE && SELECTED_BUNDLE.name) {
+          try { localStorage.setItem('selected_bundle', JSON.stringify(SELECTED_BUNDLE)); } catch(e) {}
+        }
+      } catch(e) { /* ignore */ }
       const CUSTOMER_POINTS = <?= json_encode(array_reduce($customers, function($carry,$c){ $carry[$c['customer_id']] = intval($c['loyalty_points'] ?? 0); return $carry; }, []), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
       function getSelectedCustomerValue() {
@@ -3875,8 +4013,20 @@ function factorial(int $n): int
                 price = Math.max(0, price - dvalue);
               }
             }
-            return { sku: sku, name: prod.product_name, price: price, qty: qty, stock: prod.stock_qty };
+            return { sku: sku, name: prod.product_name, price: price, qty: qty, stock: prod.stock_qty, category: prod.category_name || '' };
           }).filter(Boolean);
+          // if server returned empty cart, attempt to restore from localStorage
+          if (!cart || cart.length === 0) {
+            try {
+              const raw = localStorage.getItem('cart_local');
+              if (raw) {
+                const parsed = JSON.parse(raw) || [];
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  cart = parsed.map(it => ({ sku: it.sku, name: it.name || '', price: parseFloat(it.price || 0), qty: parseInt(it.qty || 0,10), stock: it.stock || 999, category: it.category || '' }));
+                }
+              }
+            } catch(e) { console.error('restore cart local error', e); }
+          }
           renderCart();
         }catch(e){}
       })();
@@ -3899,13 +4049,37 @@ function factorial(int $n): int
       async function addToCart(p) {
         console.debug('addToCart called', p);
         if (p.stock_qty <= 0) { toast('Out of stock!', 'red'); return; }
+        // Enforce selected bundle category limits (if any)
+        try {
+          const cat = (p.category || '').toString();
+          const getKey = (c) => {
+            const s = (c||'').toLowerCase();
+            if (s.indexOf('main') !== -1) return 'main';
+            if (s.indexOf('fill') !== -1) return 'fillers';
+            if (s.indexOf('green') !== -1) return 'greenery';
+            return null;
+          };
+          const key = getKey(cat);
+          if (SELECTED_BUNDLE && SELECTED_BUNDLE.name && key) {
+            const allowed = Number(SELECTED_BUNDLE[key] || 0);
+            if (allowed === 0) {
+              toast(`No selections allowed for this category for the chosen bundle`, 'amber');
+              return;
+            }
+            if (allowed > 0) {
+              const currentCount = cart.reduce((s,i)=> s + ((i.category && getKey(i.category)===key) ? (i.qty||0) : 0), 0);
+              if (currentCount >= allowed) { toast(`You can only select ${allowed} ${key} for this bundle`, 'amber'); return; }
+              if (currentCount + 1 > allowed) { toast(`Selecting this would exceed the ${key} limit (${allowed})`, 'amber'); return; }
+            }
+          }
+        } catch(e) { console.error(e); }
         const existing = cart.find(i => i.sku === p.sku);
         const currentQty = existing ? existing.qty : 0;
         if (currentQty >= p.stock_qty) { toast('Max stock reached', 'amber'); return; }
         const srv = await serverCartAction('add', p.sku, 1);
         if (!srv || srv.status !== 'ok') { toast((srv && srv.message) ? srv.message : 'Cannot add item', 'red'); return; }
         const qty = parseInt((srv.cart || {})[p.sku] || 0, 10);
-        if (existing) existing.qty = qty; else cart.push({ sku: p.sku, name: p.product_name, price: parseFloat(p.price), qty: qty, stock: p.stock_qty });
+        if (existing) existing.qty = qty; else cart.push({ sku: p.sku, name: p.product_name, price: parseFloat(p.price), qty: qty, stock: p.stock_qty, category: p.category || '' });
         renderCart();
         toast(p.product_name + ' added');
       }
@@ -3919,7 +4093,22 @@ function factorial(int $n): int
           return;
         }
         let html = '';
+        // compute category counts to decide plus-button availability
+        const getKey = (c) => {
+          const s = (c||'').toLowerCase();
+          if (s.indexOf('main') !== -1) return 'main';
+          if (s.indexOf('fill') !== -1) return 'fillers';
+          if (s.indexOf('green') !== -1) return 'greenery';
+          return null;
+        };
+        const counts = { main:0, fillers:0, greenery:0 };
+        cart.forEach(i => { const k = getKey(i.category); if (k) counts[k] = (counts[k]||0) + (i.qty||0); });
         cart.forEach((item, i) => {
+          // determine if plus should be disabled for this item
+          const key = getKey(item.category);
+          const allowed = (SELECTED_BUNDLE && SELECTED_BUNDLE.name && key) ? Number(SELECTED_BUNDLE[key] || 0) : null;
+          const plusDisabled = (allowed !== null && (allowed === 0 || (allowed > 0 && counts[key] >= allowed))) || (item.qty >= item.stock);
+
           html += `<div class="cart-item">
       <div class="ci-name">
         <div class="ci-pname">${item.name}</div>
@@ -3928,7 +4117,7 @@ function factorial(int $n): int
       <div class="ci-qty">
         <button class="qty-btn" onclick="chgQty(${i},-1)">&#8722;</button>
         <span style="font-size:13px;font-weight:700;min-width:22px;text-align:center;">${item.qty}</span>
-        <button class="qty-btn" onclick="chgQty(${i},1)">&#43;</button>
+        ${plusDisabled ? `<button class="qty-btn" disabled aria-disabled="true">&#43;</button>` : `<button class="qty-btn" onclick="chgQty(${i},1)">&#43;</button>`}
       </div>
       <div class="ci-total">&#8369;${(item.price*item.qty).toLocaleString(undefined,{minimumFractionDigits:2})}</div>
       <button class="ci-del" onclick="rmItem(${i})">&#215;</button>
@@ -3937,12 +4126,73 @@ function factorial(int $n): int
         list.innerHTML = html;
         document.getElementById('cart_count').textContent = cart.reduce((s, i) => s + i.qty, 0) + ' items';
         calcTotals();
+        // Update product tile availability based on current bundle selection and counts
+        try { updateCategoryRestrictions(); } catch(e) { /* ignore */ }
+        // persist cart locally for restore on refresh
+        try { localStorage.setItem('cart_local', JSON.stringify(cart)); } catch(e) {}
+      }
+
+      function updateCategoryRestrictions() {
+        const getKey = (c) => {
+          const s = (c||'').toLowerCase();
+          if (s.indexOf('main') !== -1) return 'main';
+          if (s.indexOf('fill') !== -1) return 'fillers';
+          if (s.indexOf('green') !== -1) return 'greenery';
+          return null;
+        };
+        // compute counts per key
+        const counts = { main:0, fillers:0, greenery:0 };
+        cart.forEach(i => { const k = getKey(i.category); if (k) counts[k] = (counts[k]||0) + (i.qty||0); });
+
+        document.querySelectorAll('.prod-tile').forEach(el => {
+          const cat = el.dataset.cat || '';
+          const sku = el.dataset.sku || '';
+          const key = getKey(cat);
+          if (!key || !SELECTED_BUNDLE || !SELECTED_BUNDLE.name) {
+            el.style.pointerEvents = '';
+            el.style.opacity = '';
+            return;
+          }
+          const allowed = SELECTED_BUNDLE[key] || 0;
+          const inCart = !!cart.find(i => i.sku === sku && i.qty > 0);
+          if (allowed === 0) {
+            // category fully disabled for this bundle
+            el.style.pointerEvents = 'none';
+            el.style.opacity = '0.45';
+          } else if (allowed > 0 && counts[key] >= allowed && !inCart) {
+            el.style.pointerEvents = 'none';
+            el.style.opacity = '0.45';
+          } else {
+            el.style.pointerEvents = '';
+            el.style.opacity = '';
+          }
+        });
       }
 
       async function chgQty(i, d) {
         const item = cart[i];
         const newQty = item.qty + d;
         if (d > 0 && newQty > item.stock) { toast('Max stock reached', 'amber'); return; }
+        // enforce bundle category caps when increasing
+        try {
+          if (d > 0 && SELECTED_BUNDLE && SELECTED_BUNDLE.name) {
+            const getKey = (c) => {
+              const s = (c||'').toLowerCase();
+              if (s.indexOf('main') !== -1) return 'main';
+              if (s.indexOf('fill') !== -1) return 'fillers';
+              if (s.indexOf('green') !== -1) return 'greenery';
+              return null;
+            };
+            const key = getKey(item.category || '');
+            if (key) {
+              const allowed = Number(SELECTED_BUNDLE[key] || 0);
+              const currentCount = cart.reduce((s,it) => s + ((it.category && getKey(it.category)===key) ? (it.qty||0) : 0), 0);
+              if (allowed === 0) { toast('No selections allowed for this category for the chosen bundle', 'amber'); return; }
+              if (currentCount >= allowed) { toast(`You can only select ${allowed} ${key} for this bundle`, 'amber'); return; }
+              if (currentCount + 1 > allowed) { toast(`Selecting this would exceed the ${key} limit (${allowed})`, 'amber'); return; }
+            }
+          }
+        } catch(e) { console.error(e); }
         const srv = await serverCartAction('set', item.sku, Math.max(0,newQty));
         if (!srv || srv.status !== 'ok') { toast((srv && srv.message) ? srv.message : 'Cannot update cart', 'red'); return; }
         const updatedQty = parseInt((srv.cart || {})[item.sku] || 0,10);
@@ -4111,6 +4361,28 @@ function factorial(int $n): int
           toast('Basket is empty', 'amber');
           return;
         }
+        // Validate selected bundle counts before opening payment modal
+        try {
+          if (SELECTED_BUNDLE && SELECTED_BUNDLE.name) {
+            const getKey = (c) => {
+              const s = (c||'').toLowerCase();
+              if (s.indexOf('main') !== -1) return 'main';
+              if (s.indexOf('fill') !== -1) return 'fillers';
+              if (s.indexOf('green') !== -1) return 'greenery';
+              return null;
+            };
+            const counts = { main:0, fillers:0, greenery:0 };
+            cart.forEach(i => { const k = getKey(i.category); if (k) counts[k] = (counts[k]||0) + (i.qty||0); });
+            const okMain = (counts.main === Number(SELECTED_BUNDLE.main || 0));
+            const okFill = (counts.fillers === Number(SELECTED_BUNDLE.fillers || 0));
+            const okGreen = (counts.greenery === Number(SELECTED_BUNDLE.greenery || 0));
+            if (!okMain || !okFill || !okGreen) {
+              toast(`Please select exactly ${SELECTED_BUNDLE.main} main, ${SELECTED_BUNDLE.fillers} filler${SELECTED_BUNDLE.fillers===1?'':'s'}, and ${SELECTED_BUNDLE.greenery} greenery before finalizing.`, 'amber');
+              return;
+            }
+          }
+        } catch(e) { console.error(e); }
+
         updateReceipt();
         document.getElementById('pay_overlay').classList.add('open');
       }
@@ -4252,7 +4524,24 @@ function factorial(int $n): int
       }
 
       function updateReceipt() {
-        document.getElementById('r_items').innerHTML = cart.map(i => `<div class="receipt-row"><span>${i.qty}&times; ${i.name}</span><span>&#8369;${(i.price*i.qty).toFixed(2)}</span></div>`).join('');
+        // Build receipt items HTML, include selected showcase bundle details if present
+        try {
+          const rItems = document.getElementById('r_items');
+          let html = '';
+          if (SELECTED_BUNDLE && SELECTED_BUNDLE.name) {
+            html += `<div class="receipt-row"><span style="font-weight:700">${SELECTED_BUNDLE.name}</span><span></span></div>`;
+            html += `<div class="receipt-row"><span style="font-size:12px;color:#666;">Breakdown: ${SELECTED_BUNDLE.main} main, ${SELECTED_BUNDLE.fillers} filler${SELECTED_BUNDLE.fillers===1? '':'s'}, ${SELECTED_BUNDLE.greenery} greenery</span><span></span></div>`;
+          }
+          html += cart.map(i => `<div class="receipt-row"><span>${i.qty}&times; ${i.name}</span><span>&#8369;${(i.price*i.qty).toFixed(2)}</span></div>`).join('');
+          if (rItems) rItems.innerHTML = html;
+          // populate hidden bundle fields for server submission
+          try {
+            const fbn = document.getElementById('f_bundle_name'); if (fbn) fbn.value = SELECTED_BUNDLE.name || '';
+            const fb1 = document.getElementById('f_bundle_main'); if (fb1) fb1.value = SELECTED_BUNDLE.main || 0;
+            const fb2 = document.getElementById('f_bundle_fillers'); if (fb2) fb2.value = SELECTED_BUNDLE.fillers || 0;
+            const fb3 = document.getElementById('f_bundle_greenery'); if (fb3) fb3.value = SELECTED_BUNDLE.greenery || 0;
+          } catch(e) {}
+        } catch(e) { console.error(e); }
         calcTotals();
         // Populate payment method and wallet preview fields
         try {
