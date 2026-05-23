@@ -197,7 +197,7 @@ function getActiveSessionHistoryId(): ?int {
         : null;
 }
 
-if (php_sapi_name() !== 'cli' && isset($_REQUEST['action'])) {
+if (php_sapi_name() !== 'cli' && isset($_REQUEST['action']) && basename($_SERVER['SCRIPT_NAME'] ?? '') === basename(__FILE__)) {
     try {
         $conn = dbConnect();
         ensureSessionHistoryTable($conn);

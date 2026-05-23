@@ -170,7 +170,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
   $fillers = isset($_POST['fillers']) ? max(0, (int)$_POST['fillers']) : 0;
   $greenery = isset($_POST['greenery']) ? max(0, (int)$_POST['greenery']) : 0;
   $meta = isset($_POST['meta']) ? trim($_POST['meta']) : '';
-  $image_url = isset($_POST['image_url']) && $_POST['image_url'] !== '' ? $_POST['image_url'] : null;
+  $image_url = null;
+
+  if (isset($_FILES['image_file']) && $_FILES['image_file']['error'] !== UPLOAD_ERR_NO_FILE) {
+    if ($_FILES['image_file']['error'] === UPLOAD_ERR_OK) {
+      $uploadDir = 'uploads/showcase/';
+      if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+      $originalName = preg_replace('/[^A-Za-z0-9._-]+/', '_', basename($_FILES['image_file']['name']));
+      $targetPath = $uploadDir . time() . '_' . $originalName;
+      if (move_uploaded_file($_FILES['image_file']['tmp_name'], $targetPath)) {
+        $image_url = $targetPath;
+      } else {
+        echo json_encode(['status' => 'error', 'message' => 'Failed to save showcase image.']);
+        exit;
+      }
+    } else {
+      echo json_encode(['status' => 'error', 'message' => 'Showcase image upload failed.']);
+      exit;
+    }
+  } elseif (isset($_POST['image_url']) && $_POST['image_url'] !== '') {
+    $image_url = trim($_POST['image_url']);
+  }
 
   $stmt = $conn->prepare("INSERT INTO showcase_bundles (name, description, main, fillers, greenery, meta, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)");
   $stmt->bind_param('ssiiiss', $name, $description, $main, $fillers, $greenery, $meta, $image_url);
@@ -3108,13 +3128,13 @@ function factorial(int $n): int
           <span class="modal-title">Add Showcase Item</span>
           <button class="modal-close" onclick="closeAddShowcaseModal()">&times;</button>
         </div>
-        <form id="addShowcaseForm">
-          <div class="form-group"><label>Name</label><input type="text" id="newShowcaseName" placeholder="Enter showcase name" required></div>
-          <div class="form-group"><label>Description</label><textarea id="newShowcaseDescription" rows="4" placeholder="Enter showcase description" required></textarea></div>
-          <div class="form-group"><label>Main flowers</label><input type="number" min="0" id="newShowcaseFlowers" placeholder="Main flower count" required></div>
-          <div class="form-group"><label>Fillers</label><input type="number" min="0" id="newShowcaseFillers" placeholder="Filler count" required></div>
-          <div class="form-group"><label>Free greenery</label><input type="number" min="0" id="newShowcaseGreenery" placeholder="Greenery count" required></div>
-          <div class="form-group"><label>Image</label><input type="file" id="newShowcaseImage" accept="image/*" style="padding:6px;"></div>
+        <form id="addShowcaseForm" enctype="multipart/form-data">
+          <div class="form-group"><label>Name</label><input type="text" id="newShowcaseName" name="name" placeholder="Enter showcase name" required></div>
+          <div class="form-group"><label>Description</label><textarea id="newShowcaseDescription" name="description" rows="4" placeholder="Enter showcase description" required></textarea></div>
+          <div class="form-group"><label>Main flowers</label><input type="number" min="0" id="newShowcaseFlowers" name="main" placeholder="Main flower count" required></div>
+          <div class="form-group"><label>Fillers</label><input type="number" min="0" id="newShowcaseFillers" name="fillers" placeholder="Filler count" required></div>
+          <div class="form-group"><label>Free greenery</label><input type="number" min="0" id="newShowcaseGreenery" name="greenery" placeholder="Greenery count" required></div>
+          <div class="form-group"><label>Image</label><input type="file" id="newShowcaseImage" name="image_file" accept="image/*" style="padding:6px;"></div>
           <div class="showcase-image-preview" id="newShowcasePreview">Image preview</div>
           <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:18px;">
             <button type="button" class="btn btn-secondary" onclick="closeAddShowcaseModal()">Cancel</button>
@@ -3373,7 +3393,7 @@ function factorial(int $n): int
         showcaseDeleteId = null;
 
         try {
-          const endpoint = window.location.origin + window.location.pathname;
+          const endpoint = window.location.href.split('?')[0];
           console.log('Deleting showcase', id, 'via', endpoint);
           const res = await fetch(endpoint, {
             method: 'POST',
@@ -3435,23 +3455,14 @@ function factorial(int $n): int
 
             const file = imageEl && imageEl.files && imageEl.files[0];
             const submitBundle = function() {
-              submitShowcaseToServer(newBundle).then(() => {
+              submitShowcaseToServer(newBundle, file).then(() => {
                 closeAddShowcaseModal();
                 if (addForm) addForm.reset();
                 previewNewShowcaseImage();
               });
             };
 
-            if (file) {
-              const reader = new FileReader();
-              reader.onload = function(evt) {
-                newBundle.imageUrl = evt.target.result;
-                submitBundle();
-              };
-              reader.readAsDataURL(file);
-            } else {
-              submitBundle();
-            }
+            submitBundle();
           });
         }
 
@@ -3463,7 +3474,7 @@ function factorial(int $n): int
 
         // show selected bundle info in cart header (right panel)
         try {
-          if (SELECTED_BUNDLE && SELECTED_BUNDLE.name) {
+          if (typeof SELECTED_BUNDLE !== 'undefined' && SELECTED_BUNDLE && SELECTED_BUNDLE.name) {
             const cartTitle = document.querySelector('.co-cart-title');
             if (cartTitle) {
               let info = document.getElementById('cart_bundle_info');
@@ -3517,24 +3528,27 @@ function factorial(int $n): int
         }
       }
 
-      async function submitShowcaseToServer(bundle) {
+      async function submitShowcaseToServer(bundle, file) {
         try {
-          const endpoint = window.location.origin + window.location.pathname;
+          const endpoint = window.location.href.split('?')[0];
+          const formData = new FormData();
+          formData.append('action', 'add_showcase');
+          formData.append('name', bundle.name);
+          formData.append('description', bundle.description);
+          formData.append('main', bundle.main);
+          formData.append('fillers', bundle.fillers);
+          formData.append('greenery', bundle.greenery);
+          formData.append('meta', bundle.meta);
+          if (file) {
+            formData.append('image_file', file);
+          } else if (bundle.imageUrl) {
+            formData.append('image_url', bundle.imageUrl);
+          }
           console.log('Adding showcase', bundle, 'via', endpoint);
           const res = await fetch(endpoint, {
             method: 'POST',
             credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-              action: 'add_showcase',
-              name: bundle.name,
-              description: bundle.description,
-              main: bundle.main,
-              fillers: bundle.fillers,
-              greenery: bundle.greenery,
-              meta: bundle.meta,
-              image_url: bundle.imageUrl || ''
-            })
+            body: formData
           });
           const data = await res.json();
           if (!res.ok) {
@@ -3878,9 +3892,10 @@ function factorial(int $n): int
         } catch(e) { console.error('setSelectedBundle error', e); }
       }
 
-      // restore persisted selection if no server-provided bundle
+      // restore persisted selection only when a bundle was actually selected for checkout
       try {
-        if ((!SELECTED_BUNDLE || !SELECTED_BUNDLE.name) && localStorage.getItem('selected_bundle')) {
+        const hasBundleQuery = <?= json_encode($bundleName !== '') ?>;
+        if ((!SELECTED_BUNDLE || !SELECTED_BUNDLE.name) && hasBundleQuery && localStorage.getItem('selected_bundle')) {
           const sb = JSON.parse(localStorage.getItem('selected_bundle')) || null;
           if (sb && sb.name) setSelectedBundle(sb);
         } else if (SELECTED_BUNDLE && SELECTED_BUNDLE.name) {
