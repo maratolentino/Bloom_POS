@@ -2445,6 +2445,26 @@ function factorial(int $n): int
       /* Adds more breathing space between each button */
     }
 
+    /* Ensure the right cart panel behaves as a column with a bounded height
+       so the item list can scroll while totals and actions remain visible. */
+    .co-right {
+      max-height: 100vh;
+      /* already display:flex above but ensure column layout persists */
+      display: flex;
+      flex-direction: column;
+    }
+
+    .cart-list {
+      flex: 1 1 auto; /* allow growth and shrinking, and enable scrolling */
+      min-height: 60px;
+      overflow-y: auto;
+    }
+
+    .co-totals,
+    .co-actions {
+      flex-shrink: 0; /* keep totals and action buttons visible */
+    }
+
     /* ── Receipt ── */
     .receipt {
       font-family: 'Courier New', monospace;
@@ -2931,6 +2951,24 @@ function factorial(int $n): int
     }
 
     /* ── Responsive ── */
+    @media (max-width: 1024px) {
+      /* medium screens: slightly narrower cart to preserve product area */
+      .co-right { width: 360px; }
+    }
+
+    /* Tweak layout for intermediate widths (tablet / small laptop) where
+       the cart can otherwise dominate the viewport. This tightens the
+       cart and makes product tiles smaller so both areas remain visible. */
+    @media (min-width: 769px) and (max-width: 980px) {
+      .co-right { width: 320px; }
+      .prod-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+      .co-left { padding: 18px; }
+      .prod-img { height: 110px; }
+      .co-cart-header { padding: 16px 16px 12px; }
+      .co-totals { padding: 10px 12px; }
+      .co-actions { padding: 12px 14px 14px; }
+    }
+
     @media (max-width: 768px) {
       .app {
         flex-direction: column;
@@ -2967,20 +3005,99 @@ function factorial(int $n): int
         min-width: 0;
       }
 
-      .checkout-wrap {
-        flex-direction: column;
-        height: auto;
-        overflow: auto;
+      /* Keep side-by-side until quite narrow; only stack on very small screens */
+      /* stack at <=480px to avoid cart taking full width on moderate viewports */
+      @media (max-width: 480px) {
+        .checkout-wrap {
+          flex-direction: column;
+          height: auto;
+          overflow: auto;
+        }
+        .co-right { width: 100%; border-left: none; border-top: 1.5px solid var(--taupe); }
       }
 
+      /* For tablet/smaller viewports keep cart narrower */
+      .co-right { width: 320px; }
+
+      /* Keep the cart panel bounded on small screens so the item list can scroll
+         while totals/actions remain visible. This prevents the summary from
+         completely covering the selected items area. */
       .co-right {
-        width: 100%;
-        border-left: none;
-        border-top: 1.5px solid var(--taupe);
+        max-height: calc(100vh - 120px);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .cart-list {
+        /* ensure list grows and scrolls inside the right panel */
+        flex: 1 1 auto;
+        min-height: 80px;
+        overflow-y: auto;
+      }
+
+      .co-totals,
+      .co-actions {
+        /* keep totals and action buttons visible (not collapsed) */
+        flex-shrink: 0;
       }
 
       .prod-grid {
         grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      }
+
+      /* Reduce totals area size on small screens to save vertical space */
+
+
+      /* Make the totals block more compact: smaller fonts, tighter spacing */
+      .co-totals {
+        padding: 6px 8px;
+        max-height: 220px;
+      }
+
+      .tot-row {
+        font-size: 11px;
+        padding: 1px 0;
+        line-height: 1.1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .tot-row span:first-child {
+        font-size: 11px;
+      }
+
+      .tot-row span:last-child {
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .tot-row.grand {
+        font-size: 13px;
+        padding-top: 4px;
+        margin-top: 6px;
+        font-weight: 800;
+      }
+
+      .co-actions {
+        padding: 8px 10px 10px;
+        gap: 8px;
+      }
+
+      /* tighten the Finalize button on small screens */
+      .btn.btn-primary.btn-full.btn-lg {
+        padding: 12px 18px;
+        font-size: 15px;
+      }
+
+      @media (max-width: 420px) {
+        .co-totals { padding: 6px 8px; }
+        .tot-row { font-size: 10px; }
+        .tot-row span:first-child { font-size: 10px; }
+        .tot-row span:last-child { font-size: 11px; }
+        .tot-row.grand { font-size: 12px; }
+        .btn.btn-primary.btn-full.btn-lg { font-size: 12px; padding: 8px 10px; }
       }
     }
   </style>
@@ -3839,6 +3956,10 @@ function factorial(int $n): int
 
     <script>
       const TAX_RATE = 0.12;
+      function formatItemCount(n) {
+        const count = Number(n) || 0;
+        return count === 1 ? (count + ' item') : (count + ' items');
+      }
       let cart = [];
       let selectedCustomerId = '';
       const STORE_INFO = <?= json_encode($store_info, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
@@ -4106,9 +4227,16 @@ function factorial(int $n): int
           const res = await fetch(window.location.pathname, { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() });
           console.debug('serverCartAction response status', res.status);
           const json = await res.json().catch(() => null);
-          if (!res.ok) return json || { status: 'error', message: 'Server error' };
+          if (!res.ok) {
+            // prefer server-provided message, fallback to statusText
+            const msg = (json && (json.message || json.error)) ? (json.message || json.error) : (res.statusText || 'Server error');
+            return { status: 'error', message: msg, code: res.status };
+          }
           return json;
-        }catch(e){ return null; }
+        }catch(e){
+          console.error('serverCartAction network error', e);
+          return { status: 'error', message: e.message || 'Network error' };
+        }
       }
 
       async function addToCart(p) {
@@ -4153,7 +4281,7 @@ function factorial(int $n): int
         const list = document.getElementById('cart_list');
         if (cart.length === 0) {
           list.innerHTML = '<div class="cart-empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.25;"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><div style="font-size:13px;font-weight:500;">Basket is empty</div><div style="font-size:12px;">Select products to add</div></div>';
-          document.getElementById('cart_count').textContent = '0 items';
+          document.getElementById('cart_count').textContent = formatItemCount(0);
           calcTotals();
           return;
         }
@@ -4189,7 +4317,7 @@ function factorial(int $n): int
     </div>`;
         });
         list.innerHTML = html;
-        document.getElementById('cart_count').textContent = cart.reduce((s, i) => s + i.qty, 0) + ' items';
+        document.getElementById('cart_count').textContent = formatItemCount(cart.reduce((s, i) => s + i.qty, 0));
         calcTotals();
         // Update product tile availability based on current bundle selection and counts
         try { updateCategoryRestrictions(); } catch(e) { /* ignore */ }
