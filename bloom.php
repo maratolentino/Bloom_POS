@@ -1084,7 +1084,12 @@ foreach ($__predef as $__pn) {
     $__esc = $conn->real_escape_string($__pn);
     $__chk = $conn->query("SELECT category_id FROM categories WHERE LOWER(category_name) = LOWER('$__esc') LIMIT 1");
     if ($__chk && $__chk->num_rows === 0) {
-        $conn->query("INSERT INTO categories (category_name) VALUES ('$__esc')");
+    try {
+      $conn->query("INSERT INTO categories (category_name) VALUES ('$__esc')");
+    } catch (mysqli_sql_exception $e) {
+      // If insert fails due to schema issues (duplicate PK, missing AUTO_INCREMENT),
+      // skip here to avoid fatal uncaught exception. Admin should repair DB schema.
+    }
     }
 }
 

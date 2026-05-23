@@ -9,8 +9,9 @@
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
-SET time_zone = "+00:00";
 
+-- `employees` already defines its primary key in the CREATE TABLE section;
+-- skip adding it again to avoid "Multiple primary key defined" errors.
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -274,14 +275,13 @@ ALTER TABLE `discounts`
 --
 -- Indexes for table `employees`
 --
-ALTER TABLE `employees`
-  ADD PRIMARY KEY (`employee_id`);
+-- `employees` already defines its primary key in the CREATE TABLE section;
+-- do not add it again during import.
 
 --
 -- Indexes for table `session_history`
 --
 ALTER TABLE `session_history`
-  ADD PRIMARY KEY (`id`),
   ADD KEY `idx_employee_active` (`employee_id`, `logout_time`),
   ADD KEY `idx_employee_login` (`employee_id`, `login_time`);
 

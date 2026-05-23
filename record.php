@@ -29,7 +29,7 @@ function createSessionHistoryTableSql(): string {
     return <<<SQL
 CREATE TABLE IF NOT EXISTS session_history (
   id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  employee_id VARCHAR(8) NOT NULL,
+  employee_id VARCHAR(50) NOT NULL,
   login_date DATE NOT NULL,
   login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   logout_time DATETIME NULL DEFAULT NULL,
