@@ -507,13 +507,22 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
         exit;
       }
     } elseif ($payment_method === 'Maya') {
-      if (!preg_match('/^[0-9]{16}$/', $wallet_contact)) {
-        $msg = 'Maya Reference ID must be exactly 16 digits (numbers only).';
+      // Maya: require exactly 12 digits (numbers only)
+      if (!preg_match('/^[0-9]{12}$/', $wallet_contact)) {
+        $msg = 'Maya Reference ID must be exactly 12 digits (numbers only).';
         if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>$msg]); exit; }
         $_SESSION['payment_error'] = $msg;
         header('Location: ?page=checkout');
         exit;
       }
+    }
+    // Server-side validation for wallet account name (letters and spaces only, allow ñ/Ñ)
+    if (!preg_match('/^[a-zA-ZñÑ ]+$/', $wallet_account)) {
+      $msg = 'Account Name must contain letters and spaces only.';
+      if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>$msg]); exit; }
+      $_SESSION['payment_error'] = $msg;
+      header('Location: ?page=checkout');
+      exit;
     }
   }
 
@@ -1144,7 +1153,8 @@ function validateStaffName($name)
 {
   $name = trim($name);
   if (empty($name))                          return "Name is required.";
-  if (!preg_match("/^[a-zA-Z ]*$/", $name)) return "Name must contain letters and spaces only.";
+  // Allow letters, spaces, and the Spanish ñ/Ñ character
+  if (!preg_match("/^[a-zA-ZñÑ ]*$/", $name)) return "Name must contain letters and spaces only (ñ allowed).";
   if (strlen($name) < 3)                     return "Name must be at least 3 characters."; //strlen() to check minimum length of staff name
   return true;
 }
@@ -2904,7 +2914,7 @@ function factorial(int $n): int
               </select>
             </div>
           </div>
-          <div class="form-group"><label>Full Name</label><input type="text" name="full_name" placeholder="Full Name" required></div>
+          <div class="form-group"><label>Full Name</label><input type="text" name="full_name" placeholder="Full Name" required pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')"></div>
           <div class="form-group"><label>Passcode</label><input type="password" name="passcode" placeholder="Choose a passcode" required></div>
           <div class="form-group">
             <label>Profile Photo <span style="color:var(--text-3); font-weight:400; text-transform:none;">(optional)</span></label>
@@ -3585,11 +3595,11 @@ function factorial(int $n): int
               <div id="digital_wallet_area" style="display:none;">
                 <div class="form-group">
                   <label id="wallet_contact_label">Contact Number <span style="color:var(--red);">*</span></label>
-                  <input type="text" id="wallet_contact" name="wallet_contact" placeholder="e.g., 09123456789">
+                  <input type="text" id="wallet_contact" name="wallet_contact" placeholder="e.g., 09123456789" inputmode="numeric" pattern="[0-9]*" maxlength="13" oninput="this.value = this.value.replace(/\D/g,'').slice(0, this.maxLength);">
                 </div>
                 <div class="form-group">
                   <label>Account Name <span style="color:var(--red);">*</span></label>
-                  <input type="text" id="wallet_account_name" name="wallet_account_name" placeholder="Account holder name">
+                  <input type="text" id="wallet_account_name" name="wallet_account_name" placeholder="Account holder name" pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')">
                 </div>
                 <div class="form-group">
                   <label>Reference/Transaction Proof <span style="color:var(--red);">*</span></label>
@@ -4122,7 +4132,7 @@ function factorial(int $n): int
               if (pm.value === 'GCash') {
                 if (!/^[0-9]{13}$/.test(contact)) { contactEl.setCustomValidity('Reference Number must be exactly 13 digits (numbers only)'); contactEl.reportValidity(); contactEl.focus(); return; }
               } else if (pm.value === 'Maya') {
-                if (!/^[0-9]{16}$/.test(contact)) { contactEl.setCustomValidity('Reference ID must be exactly 16 digits (numbers only)'); contactEl.reportValidity(); contactEl.focus(); return; }
+                if (!/^[0-9]{12}$/.test(contact)) { contactEl.setCustomValidity('Reference ID must be exactly 12 digits (numbers only)'); contactEl.reportValidity(); contactEl.focus(); return; }
               }
             }
 
@@ -4221,8 +4231,13 @@ function factorial(int $n): int
           // set wallet label/placeholder for selected method
           const wlbl = document.getElementById('wallet_contact_label');
           const winput = document.getElementById('wallet_contact');
-          if (wlbl) wlbl.textContent = method === 'GCash' ? 'Reference Number' : 'Reference ID';
-          if (winput) winput.placeholder = method === 'GCash' ? '13-digit reference number (numbers only)' : '16-digit reference ID (numbers only)';
+            if (wlbl) wlbl.textContent = method === 'GCash' ? 'Reference Number' : 'Reference ID';
+            if (winput) {
+              winput.placeholder = method === 'GCash' ? '13-digit reference number (numbers only)' : '12-digit reference ID (numbers only)';
+              winput.maxLength = method === 'GCash' ? 13 : 12;
+              // ensure any non-digit characters are removed and length capped
+              winput.value = (winput.value || '').replace(/\D/g, '').slice(0, winput.maxLength);
+            }
           errorDiv.style.display = 'none';
         }
         
@@ -4279,8 +4294,8 @@ function factorial(int $n): int
               errorDiv.style.display = 'block';
               return;
             }
-            if (pm.value === 'Maya' && !/^[0-9]{16}$/.test(contact)) {
-              errorDiv.innerHTML = '⚠ Reference ID must be exactly 16 digits (numbers only)';
+            if (pm.value === 'Maya' && !/^[0-9]{12}$/.test(contact)) {
+              errorDiv.innerHTML = '⚠ Reference ID must be exactly 12 digits (numbers only)';
               errorDiv.style.display = 'block';
               return;
             }
@@ -4652,7 +4667,7 @@ function factorial(int $n): int
 
               <div class="form-group">
                 <label>Full Name</label>
-                <input type="text" name="full_name" value="<?= htmlspecialchars(isset($_SESSION['user_name']) ? $_SESSION['user_name'] : '', ENT_QUOTES, 'UTF-8') ?>" required>
+                <input type="text" name="full_name" value="<?= htmlspecialchars(isset($_SESSION['user_name']) ? $_SESSION['user_name'] : '', ENT_QUOTES, 'UTF-8') ?>" required pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')">
               </div>
 
               <div class="form-group">
@@ -4920,7 +4935,7 @@ function factorial(int $n): int
                 <div class="card">
                   <div style="font-size:15px; font-weight:700; color:var(--espresso); margin-bottom:18px;">Create Promotion</div>
                   <form method="POST" action="?page=inventory&tab=discounts">
-                    <div class="form-group"><label>Promotion Name</label><input type="text" name="d_name" placeholder="e.g. Summer Sale" required></div>
+                    <div class="form-group"><label>Promotion Name</label><input type="text" name="d_name" placeholder="e.g. Summer Sale" required pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')"></div>
                     <div class="form-row">
                       <div class="form-group"><label>Type</label>
                         <select name="d_type" id="disc_type_sel">
@@ -4989,7 +5004,7 @@ function factorial(int $n): int
               <form method="POST" action="?page=inventory&tab=items" enctype="multipart/form-data" id="prod_form">
                 <input type="hidden" name="old_sku" id="hidden_sku">
                 <div class="form-group"><label>SKU / ID</label><input type="text" name="sku" id="form_sku" placeholder="ROSE-001" pattern="[A-Za-z]+-[0-9]{3}" title="Use FLOWERNAME-001 format" oninput="this.value = this.value.toUpperCase()" required></div>
-                <div class="form-group"><label>Product Name</label><input type="text" name="name" id="form_name" placeholder="Product name" required></div>
+                <div class="form-group"><label>Product Name</label><input type="text" name="name" id="form_name" placeholder="Product name" required pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')"></div>
                 <div class="form-row-3">
                   <div class="form-group"><label>Price (&#8369;)</label><input type="text" name="price" id="form_price" oninput="onPriceInput(this)" placeholder="0.00" required></div>
                   <div class="form-group"><label>VAT (12%)</label><input type="text" id="form_vat" readonly placeholder="0.00" style="background:#f4f1ee; color:#333;"></div>
@@ -5043,7 +5058,7 @@ function factorial(int $n): int
                 
                 <div class="form-group">
                   <label>Variant Color / Specifics</label>
-                  <input type="text" name="variant_name" id="variant_new_name" placeholder="e.g. White Rose" required>
+                  <input type="text" name="variant_name" id="variant_new_name" placeholder="e.g. White Rose" required pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')">
                 </div>
                 
                 <div class="form-group">
@@ -5102,7 +5117,7 @@ function factorial(int $n): int
                 <button class="modal-close" onclick="document.getElementById('addCatModal').classList.remove('open')">&times;</button>
               </div>
               <form method="POST" action="?page=inventory&tab=categories">
-                <div class="form-group"><label>Category Name</label><input type="text" name="category_name" required autofocus></div>
+                <div class="form-group"><label>Category Name</label><input type="text" name="category_name" required autofocus pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')"></div>
                 <button type="submit" name="add_category" class="btn btn-primary btn-full">Create Category</button>
               </form>
             </div>
@@ -5117,7 +5132,7 @@ function factorial(int $n): int
               </div>
               <form method="POST" action="?page=inventory&tab=categories">
                 <input type="hidden" name="category_id" id="edit_cat_id">
-                <div class="form-group"><label>Category Name</label><input type="text" name="category_name" id="edit_cat_name" required></div>
+                <div class="form-group"><label>Category Name</label><input type="text" name="category_name" id="edit_cat_name" required pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')"></div>
                 <div style="display:flex; gap:8px;">
                   <button type="submit" name="update_category" class="btn btn-primary btn-full">Update</button>
                   <button type="submit" name="delete_category" class="btn btn-danger btn-full" data-confirm="Delete this category?">Delete</button>
@@ -5640,7 +5655,7 @@ function factorial(int $n): int
                 <button class="modal-close" onclick="document.getElementById('addCustModal').classList.remove('open')">&times;</button>
               </div>
               <form method="POST" action="?page=crm" enctype="multipart/form-data">
-                <div class="form-group"><label>Full Name</label><input type="text" name="full_name" pattern="[A-Za-z ]+" minlength="3" title="Name must contain letters and spaces only" required></div>
+                <div class="form-group"><label>Full Name</label><input type="text" name="full_name" pattern="[A-Za-zÑñ ]+" minlength="3" title="Name must contain letters and spaces only" required oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')"></div>
                 <div class="form-row">
                   <div class="form-group"><label>Email</label><input type="email" name="contact_email" placeholder="you@gmail.com" pattern="[A-Za-z0-9.]+@gmail\.com" title="Must be a Gmail address (only letters, numbers, and periods allowed before @)" required></div>
                   <div class="form-group"><label>Contact Number</label><input type="text" name="contact_number" inputmode="numeric" pattern="[0-9]{11}" maxlength="11" placeholder="09XXXXXXXXX" title="11 digits, numbers only" required></div>
@@ -5660,7 +5675,7 @@ function factorial(int $n): int
               </div>
               <form method="POST" action="?page=crm" enctype="multipart/form-data">
                 <input type="hidden" name="customer_id" id="edit_cust_id">
-                <div class="form-group"><label>Full Name</label><input type="text" name="full_name" id="edit_cust_name" pattern="[A-Za-z ]+" minlength="3" title="Name must contain letters and spaces only" required></div>
+                <div class="form-group"><label>Full Name</label><input type="text" name="full_name" id="edit_cust_name" pattern="[A-Za-zÑñ ]+" minlength="3" title="Name must contain letters and spaces only" required oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')"></div>
                 <div class="form-row">
                   <div class="form-group"><label>Email</label><input type="email" name="contact_email" id="edit_cust_email" pattern="[A-Za-z0-9.]+@gmail\.com" title="Must be a Gmail address (only letters, numbers, and periods allowed before @gmail.com)" required></div>
                   <div class="form-group"><label>Contact Number</label><input type="text" name="contact_number" id="edit_cust_number" inputmode="numeric" pattern="[0-9]{11}" maxlength="11" placeholder="09XXXXXXXXX" title="11 digits, numbers only" required></div>
@@ -5768,7 +5783,7 @@ function factorial(int $n): int
               </div>
               <form method="POST" action="?page=employees" enctype="multipart/form-data">
                 <input type="hidden" name="employee_id" id="edit_emp_id">
-                <div class="form-group"><label>Full Name</label><input type="text" name="full_name" id="edit_emp_name" required></div>
+                <div class="form-group"><label>Full Name</label><input type="text" name="full_name" id="edit_emp_name" required pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')"></div>
                 <div class="form-group"><label>Role</label>
                   <select name="role" id="edit_emp_role">
                     <option value="Cashier">Cashier</option>
