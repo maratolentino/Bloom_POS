@@ -1035,6 +1035,17 @@ if ($page === "employees" && $_SESSION["user_role"] === "Admin") {
   }
 }
 
+// Ensure predefined categories exist (Main / Filler / Greenery)
+$__predef = ['Main', 'Filler', 'Greenery'];
+foreach ($__predef as $__pn) {
+    $__esc = $conn->real_escape_string($__pn);
+    $__chk = $conn->query("SELECT category_id FROM categories WHERE LOWER(category_name) = LOWER('$__esc') LIMIT 1");
+    if ($__chk && $__chk->num_rows === 0) {
+        $conn->query("INSERT INTO categories (category_name) VALUES ('$__esc')");
+    }
+}
+
+
 // ══ DATA FETCH ═══════════════════════════════════════════════
 $cats_res  = $conn->query("SELECT * FROM categories ORDER BY category_name");
 $cats      = $cats_res ? $cats_res->fetch_all(MYSQLI_ASSOC) : [];
@@ -4438,7 +4449,7 @@ function factorial(int $n): int
         pill.classList.add('active');
         const cat = pill.dataset.cat;
         document.querySelectorAll('.prod-tile').forEach(el => {
-          el.style.display = (!cat || el.dataset.cat === cat) ? '' : 'none';
+          el.style.display = (!cat || (el.dataset.cat || '').toLowerCase() === cat.toLowerCase()) ? '' : 'none';
         });
       });
 
@@ -4821,12 +4832,18 @@ function factorial(int $n): int
 
             <div class="tabs">
               <a href="?page=inventory&tab=items" class="tab-link <?= $activeTab === 'items' ? 'active' : '' ?>">Products</a>
-              <a href="?page=inventory&tab=categories" class="tab-link <?= $activeTab === 'categories' ? 'active' : '' ?>">Categories</a>
               <a href="?page=inventory&tab=discounts" class="tab-link <?= $activeTab === 'discounts' ? 'active' : '' ?>">Discounts</a>
             </div>
 
             <!-- Products -->
             <div class="tab-pane <?= $activeTab === 'items' ? 'active' : '' ?>">
+              <div class="cat-filter" id="inv-cat-filter">
+  <span class="cat-pill active" data-cat="">All</span>
+  <span class="cat-pill" data-cat="Main">Main</span>
+  <span class="cat-pill" data-cat="Filler">Filler</span>
+  <span class="cat-pill" data-cat="Greenery">Greenery</span>
+</div>
+
               <?php if (empty($inventory)): ?>
                 <div class="card" style="text-align:center; padding:40px; color:var(--text-3);">No products yet. Click <strong>Add Product</strong> to get started.</div>
               <?php else: ?>
@@ -4838,7 +4855,7 @@ function factorial(int $n): int
                     $ep_with_vat = $ep * (1 + $taxRate);
                     $base_with_vat = floatval($item['price']) * (1 + $taxRate);
                   ?>
-                    <div class="inv-card" onclick="openEditModal(<?= htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8') ?>)">
+                  <div class="inv-card" data-cat="<?= htmlspecialchars($item['category_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>" onclick="openEditModal(<?= htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8') ?>)">
                       <form data-confirm="Delete this product?" method="POST" action="?page=inventory&tab=items" style="position:absolute; top:8px; right:8px; z-index:2;">
                         <input type="hidden" name="delete_sku" value="<?= $item['sku'] ?>">
                         <button type="submit" class="inv-del-btn" onclick="event.stopPropagation();" title="Delete">&times;</button>
@@ -5014,7 +5031,15 @@ function factorial(int $n): int
                   <div class="form-group"><label>Category</label>
                     <select name="category_id" id="form_cat">
                       <option value="">Uncategorized</option>
-                      <?php foreach ($cats as $c): ?><option value="<?= $c['category_id'] ?>"><?= htmlspecialchars($c['category_name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?>
+                                           <?php
+                        $predefinedCats = ['Main', 'Filler', 'Greenery'];
+                        $catIdMap = [];
+                        foreach ($cats as $c) { $catIdMap[strtolower($c['category_name'])] = $c['category_id']; }
+                        foreach ($predefinedCats as $pn):
+                          $pid = isset($catIdMap[strtolower($pn)]) ? $catIdMap[strtolower($pn)] : '';
+                      ?>
+                        <option value="<?= htmlspecialchars($pid, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($pn, ENT_QUOTES, 'UTF-8') ?></option>
+                      <?php endforeach; ?>
                     </select>
                   </div>
                   <div class="form-group"><label>Discount</label>
@@ -5258,7 +5283,22 @@ function factorial(int $n): int
               if (sku) {
                 openEditModalBySku(sku);
               }
+
+              const invCatFilter = document.getElementById('inv-cat-filter');
+              if (invCatFilter) {
+                invCatFilter.addEventListener('click', function(e) {
+                  const pill = e.target.closest('.cat-pill');
+                  if (!pill) return;
+                  invCatFilter.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('active'));
+                  pill.classList.add('active');
+                  const cat = pill.dataset.cat;
+                  document.querySelectorAll('.inv-grid .inv-card').forEach(el => {
+                    el.style.display = (!cat || el.dataset.cat === cat) ? '' : 'none';
+                  });
+                });
+              }
             });
+
 
             function openEditCatModal(id, name) {
               document.getElementById('edit_cat_id').value = id;
