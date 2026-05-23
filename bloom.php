@@ -113,6 +113,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_cart'])) {
   exit;
 }
 
+function getNextProductSku(mysqli $conn): string {
+  $nextSku = 'PR-001';
+  $result = $conn->query("SELECT MAX(CAST(SUBSTRING(sku, 4) AS UNSIGNED)) AS max_num FROM inventory WHERE sku REGEXP '^PR-[0-9]{3}$'");
+  if ($result) {
+    $row = $result->fetch_assoc();
+    $maxNum = isset($row['max_num']) ? (int)$row['max_num'] : 0;
+    $nextSku = 'PR-' . str_pad($maxNum + 1, 3, '0', STR_PAD_LEFT);
+    $result->free();
+  }
+  return $nextSku;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_showcase'])) {
   header('Content-Type: application/json');
   $items = [];
@@ -123,6 +135,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_showcase'])) {
     }
   }
   echo json_encode(['status' => 'ok', 'items' => $items]);
+  exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_next_sku'])) {
+  header('Content-Type: application/json');
+  echo json_encode(['status' => 'ok', 'next_sku' => getNextProductSku($conn)]);
   exit;
 }
 
@@ -635,8 +653,12 @@ if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_P
     $cat_id     = (!$is_variant && isset($_POST["category_id"]) && $_POST["category_id"] !== "") ? (int)$_POST["category_id"] : null;
     $disc_id    = (!$is_variant && isset($_POST["discount_id"])  && $_POST["discount_id"]  !== "") ? (int)$_POST["discount_id"]  : null;
 
+    if (!$is_variant && $sku === '') {
+      $sku = getNextProductSku($conn);
+    }
+
     if (!isValidProductSku($sku)) {
-      $_SESSION['inventory_error'] = 'SKU must follow the format FLOWERNAME-001 and only use letters before the dash.';
+      $_SESSION['inventory_error'] = 'SKU must follow the format PR-001 and only use letters before the dash.';
       header('Location: ?page=inventory&tab=items');
       exit;
     }
@@ -1549,6 +1571,43 @@ function factorial(int $n): int
     /* ── Tables ── */
     .tbl-wrap {
       overflow-x: auto;
+    }
+
+    .table-header-with-search {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .table-header-with-search .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--espresso);
+    }
+
+    .table-header-with-search .search-field {
+      width: 320px;
+      max-width: 100%;
+    }
+
+    .table-header-with-search .search-field input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--taupe);
+      border-radius: 999px;
+      font-size: 14px;
+      color: var(--text);
+      background: var(--surface);
+      transition: border-color .2s, box-shadow .2s;
+    }
+
+    .table-header-with-search .search-field input:focus {
+      outline: none;
+      border-color: var(--chestnut);
+      box-shadow: 0 0 0 4px rgba(226, 175, 154, .15);
     }
 
     table {
@@ -4952,7 +5011,7 @@ function factorial(int $n): int
                 <div class="card">
                   <div style="font-size:15px; font-weight:700; color:var(--espresso); margin-bottom:18px;">Create Promotion</div>
                   <form method="POST" action="?page=inventory&tab=discounts">
-                    <div class="form-group"><label>Promotion Name</label><input type="text" name="d_name" placeholder="e.g. Summer Sale" required pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')"></div>
+                    <div class="form-group"><label>Promotion Name</label><input type="text" name="d_name" placeholder="e.g. 10% Off Mother's Day Sale" required pattern="[A-Za-z0-9Ññ %'.,-]+" title="Letters, numbers, spaces and common symbols are allowed" oninput="this.value = this.value.replace(/[^A-Za-z0-9Ññ %'.,-]/g,'')"></div>
                     <div class="form-row">
                       <div class="form-group"><label>Type</label>
                         <select name="d_type" id="disc_type_sel">
@@ -5020,7 +5079,7 @@ function factorial(int $n): int
               </div>
               <form method="POST" action="?page=inventory&tab=items" enctype="multipart/form-data" id="prod_form">
                 <input type="hidden" name="old_sku" id="hidden_sku">
-                <div class="form-group"><label>SKU / ID</label><input type="text" name="sku" id="form_sku" placeholder="ROSE-001" pattern="[A-Za-z]+-[0-9]{3}" title="Use FLOWERNAME-001 format" oninput="this.value = this.value.toUpperCase()" required></div>
+                <div class="form-group"><label>SKU / ID</label><input type="text" name="sku" id="form_sku" placeholder="PR-001" pattern="PR-[0-9]{3}" title="SKU is generated automatically as PR-001, PR-002, etc." readonly tabindex="-1" style="pointer-events:none; background:#f4f1ee; color:#333; cursor:not-allowed;" required></div>
                 <div class="form-group"><label>Product Name</label><input type="text" name="name" id="form_name" placeholder="Product name" required pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')"></div>
                 <div class="form-row-3">
                   <div class="form-group"><label>Price (&#8369;)</label><input type="text" name="price" id="form_price" oninput="onPriceInput(this)" placeholder="0.00" required></div>
@@ -5031,7 +5090,7 @@ function factorial(int $n): int
                   <div class="form-group"><label>Category</label>
                     <select name="category_id" id="form_cat">
                       <option value="">Uncategorized</option>
-                                           <?php
+                        <?php
                         $predefinedCats = ['Main', 'Filler', 'Greenery'];
                         $catIdMap = [];
                         foreach ($cats as $c) { $catIdMap[strtolower($c['category_name'])] = $c['category_id']; }
@@ -5202,8 +5261,25 @@ function factorial(int $n): int
 
               const skuEl = document.getElementById('form_sku');
               if (skuEl) {
-                skuEl.readOnly = false;
+                skuEl.readOnly = true;
+                skuEl.value = 'PR-001';
+                skuEl.style.pointerEvents = 'none';
+                skuEl.style.background = '#f4f1ee';
+                skuEl.style.cursor = 'not-allowed';
+                skuEl.style.color = '#333';
               }
+
+              fetch('?page=inventory&tab=items&get_next_sku=1')
+                .then(response => response.json())
+                .then(data => {
+                  if (data && data.status === 'ok' && data.next_sku) {
+                    if (skuEl) skuEl.value = data.next_sku;
+                  }
+                })
+                .catch(() => {
+                  if (skuEl) skuEl.value = 'PR-001';
+                });
+
               // clear VAT display
               const vatEl = document.getElementById('form_vat'); if (vatEl) vatEl.value = '';
               document.getElementById('productModal').classList.add('open');
@@ -5955,9 +6031,14 @@ function factorial(int $n): int
             </div>
 
             <div class="card">
-              <div style="font-size:14px; font-weight:700; color:var(--espresso); margin-bottom:14px;">Recent Transactions</div>
+              <div class="table-header-with-search">
+                <div class="section-title">Recent Transactions</div>
+                <div class="search-field">
+                  <input type="text" id="recent_transactions_search" placeholder="Search Order ID, Date & Time, Cashier">
+                </div>
+              </div>
               <div class="tbl-wrap">
-                <table>
+                <table id="recent_transactions_table">
                   <thead>
                     <tr>
                       <th>Order ID</th>
@@ -5970,7 +6051,7 @@ function factorial(int $n): int
                     </tr>
                   </thead>
                   <tbody>
-                   <?php $r_sales_rows = $r_sales ? $r_sales->fetch_all(MYSQLI_ASSOC) : [];
+                  <?php $r_sales_rows = $r_sales ? $r_sales->fetch_all(MYSQLI_ASSOC) : [];
 if (!empty($r_sales_rows)):
   foreach ($r_sales_rows as $s):
     $sku_esc = $conn->real_escape_string($s['transaction_id']);
@@ -6124,6 +6205,29 @@ if (!empty($r_sales_rows)):
       const el = document.getElementById('transactionDetailModal');
       if (el) el.classList.remove('open');
     }
+
+    function filterRecentTransactions() {
+      var searchInput = document.getElementById('recent_transactions_search');
+      var query = '';
+      if (searchInput) {
+        query = searchInput.value.trim().toLowerCase();
+      }
+      var rows = document.querySelectorAll('#recent_transactions_table tbody tr');
+      rows.forEach(function(row) {
+        var orderId = row.cells[0] && row.cells[0].textContent ? row.cells[0].textContent.trim().toLowerCase() : '';
+        var dateTime = row.cells[1] && row.cells[1].textContent ? row.cells[1].textContent.trim().toLowerCase() : '';
+        var cashier = row.cells[2] && row.cells[2].textContent ? row.cells[2].textContent.trim().toLowerCase() : '';
+        var isVisible = query === '' || orderId.indexOf(query) !== -1 || dateTime.indexOf(query) !== -1 || cashier.indexOf(query) !== -1;
+        row.style.display = isVisible ? '' : 'none';
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      const searchInput = document.getElementById('recent_transactions_search');
+      if (searchInput) {
+        searchInput.addEventListener('input', filterRecentTransactions);
+      }
+    });
   </script>
 
 </body>
