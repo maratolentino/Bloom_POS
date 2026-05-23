@@ -27,6 +27,13 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
+// If this is a newly-created session for this client, ensure the cart starts empty.
+// This prevents showing leftover items when the system is first opened.
+if (!isset($_SESSION['__bloom_initialized'])) {
+    $_SESSION['__bloom_initialized'] = true;
+    if (isset($_SESSION['cart'])) unset($_SESSION['cart']);
+}
+
 /**
  * Return the full cart array (sku => qty)
  */

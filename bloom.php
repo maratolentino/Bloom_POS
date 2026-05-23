@@ -4086,17 +4086,11 @@ function factorial(int $n): int
             }
             return { sku: sku, name: prod.product_name, price: price, qty: qty, stock: prod.stock_qty, category: prod.category_name || '' };
           }).filter(Boolean);
-          // if server returned empty cart, attempt to restore from localStorage
+          // if server returned empty cart, clear any stale localStorage cart to ensure cart starts empty
           if (!cart || cart.length === 0) {
             try {
-              const raw = localStorage.getItem('cart_local');
-              if (raw) {
-                const parsed = JSON.parse(raw) || [];
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  cart = parsed.map(it => ({ sku: it.sku, name: it.name || '', price: parseFloat(it.price || 0), qty: parseInt(it.qty || 0,10), stock: it.stock || 999, category: it.category || '' }));
-                }
-              }
-            } catch(e) { console.error('restore cart local error', e); }
+              localStorage.removeItem('cart_local');
+            } catch(e) { console.error('clear local cart error', e); }
           }
           renderCart();
         }catch(e){}
