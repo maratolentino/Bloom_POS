@@ -3563,6 +3563,8 @@ function factorial(int $n): int
                 <div class="receipt-row" style="font-weight:700; font-size:14px;"><span>TOTAL</span><span id="r_total">&#8369;0.00</span></div>
                 <hr class="receipt-sep">
                 <div class="receipt-row"><span>Change</span><span id="r_change">&#8212;</span></div>
+                <div class="receipt-row"><span>Mode of Payment</span><span id="r_payment_method">&#8212;</span></div>
+                <div class="receipt-row" id="r_wallet_row" style="display:none;"><span id="r_wallet_contact_label">Contact Number</span><span id="r_wallet_contact">&#8212;</span></div>
               </div>
             </div>
             <div>
@@ -4172,6 +4174,23 @@ function factorial(int $n): int
       function updateReceipt() {
         document.getElementById('r_items').innerHTML = cart.map(i => `<div class="receipt-row"><span>${i.qty}&times; ${i.name}</span><span>&#8369;${(i.price*i.qty).toFixed(2)}</span></div>`).join('');
         calcTotals();
+        // Populate payment method and wallet preview fields
+        try {
+          const pm = document.querySelector('input[name="payment_method"]:checked');
+          const paymentEl = document.getElementById('r_payment_method');
+          const walletRow = document.getElementById('r_wallet_row');
+          const walletLabel = document.getElementById('r_wallet_contact_label');
+          const walletContactEl = document.getElementById('r_wallet_contact');
+          if (paymentEl) paymentEl.textContent = pm ? pm.value : 'Cash';
+          if (pm && (pm.value === 'GCash' || pm.value === 'Maya')) {
+            if (walletRow) walletRow.style.display = 'flex';
+            if (walletLabel) walletLabel.textContent = pm.value === 'GCash' ? 'Reference Number' : 'Reference ID';
+            const src = document.getElementById('wallet_contact');
+            if (walletContactEl) walletContactEl.textContent = src && src.value ? src.value.trim() : '—';
+          } else {
+            if (walletRow) walletRow.style.display = 'none';
+          }
+        } catch (e) { /* ignore */ }
       }
 
       function handlePaymentMethodChange(method) {
@@ -5961,6 +5980,7 @@ if (!empty($r_sales_rows)):
           <div id="td_items"></div>
           <hr class="receipt-sep">
           <div class="receipt-row"><span>Total Due</span><span id="td_total">&#8369;0.00</span></div>
+          <div class="receipt-row"><span>Mode of Payment</span><span id="td_payment_method">&#8212;</span></div>
           <div class="receipt-row" id="td_amount_received_row" style="display:none;"><span>Amount Received</span><span id="td_amount_received">&#8369;0.00</span></div>
           <div class="receipt-row" id="td_change_row" style="display:none;"><span>Change</span><span id="td_change">&#8369;0.00</span></div>
           <div id="td_wallet_area" style="display:none;margin-top:12px;">
@@ -5996,6 +6016,10 @@ if (!empty($r_sales_rows)):
         }
 
         document.getElementById('td_total').textContent = '\u20B1' + (parseFloat(d.total_amount || 0).toFixed(2));
+
+        // Show mode of payment
+        const tdPmEl = document.getElementById('td_payment_method');
+        if (tdPmEl) tdPmEl.textContent = d.payment_method ? d.payment_method : 'Cash';
 
         if ((d.payment_method || '').toLowerCase() === 'cash') {
           // Show amount received and change using flex display to preserve receipt row layout
