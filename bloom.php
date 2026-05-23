@@ -496,6 +496,25 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
         $wallet_proof_url = $filepath;
       }
     }
+
+    // Server-side validation for wallet reference formats
+    if ($payment_method === 'GCash') {
+      if (!preg_match('/^[0-9]{13}$/', $wallet_contact)) {
+        $msg = 'GCash Reference Number must be exactly 13 digits (numbers only).';
+        if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>$msg]); exit; }
+        $_SESSION['payment_error'] = $msg;
+        header('Location: ?page=checkout');
+        exit;
+      }
+    } elseif ($payment_method === 'Maya') {
+      if (!preg_match('/^[0-9]{16}$/', $wallet_contact)) {
+        $msg = 'Maya Reference ID must be exactly 16 digits (numbers only).';
+        if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>$msg]); exit; }
+        $_SESSION['payment_error'] = $msg;
+        header('Location: ?page=checkout');
+        exit;
+      }
+    }
   }
 
   $cart_subtotal = 0;
@@ -528,7 +547,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     }
   }
 
-  if ($stmt && $stmt->execute()) {
+    if ($stmt && $stmt->execute()) {
     foreach ($cart_data as $item) {
       $sku   = $conn->real_escape_string($item["sku"]);
       $qty   = (int)$item["qty"];
@@ -558,8 +577,25 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
         $updatePoints->close();
       }
     }
-    $order_skus = implode(',', array_map(function ($i) { return $i['sku']; }, $cart_data));
-    header("Location: ?page=checkout&success=1&order_id=" . urlencode($order_skus));
+    // Compute a human-friendly order number for today's transactions (e.g. #1004)
+    $sale_day_esc  = $conn->real_escape_string(date('Y-m-d', strtotime($sale_date)));
+    $sale_date_esc = $conn->real_escape_string($sale_date);
+    $txn_esc       = $conn->real_escape_string($transaction_id);
+    $pos_row = $conn->query("SELECT COUNT(*) as n FROM sales WHERE DATE(sale_date)='$sale_day_esc' AND status='Completed' AND (sale_date < '$sale_date_esc' OR (sale_date = '$sale_date_esc' AND transaction_id <= '$txn_esc'))")->fetch_assoc();
+    $pos_n = $pos_row ? (int)$pos_row['n'] : 1;
+    $order_num = '#' . (1000 + $pos_n);
+    $order_id_display = $order_num;
+    $redirect_url = '?page=checkout&success=1&order_id=' . urlencode($order_id_display);
+    // Clear the cart so the next transaction starts fresh
+    cart_clear();
+    // If request came from AJAX (FormData + fetch), return JSON so client can react
+    if (isset($_POST['_ajax'])) {
+      header('Content-Type: application/json');
+      header('X-Session-Id: ' . session_id());
+      echo json_encode(['status' => 'ok', 'redirect' => $redirect_url]);
+      exit;
+    }
+    header("Location: $redirect_url");
     exit;
   }
 }
@@ -567,7 +603,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
 
 
 // ── Inventory CRUD ────────────────────────────────────────────
-if ($page === "inventory" && $_SESSION["user_role"] === "Admin") {
+if ($page === "inventory" && isset($_SESSION["user_role"]) && $_SESSION["user_role"] === "Admin") {
   function isValidProductSku(string $sku): bool {
     return preg_match('/^[A-Za-z]+-\d{3}$/', $sku) === 1;
   }
@@ -2932,6 +2968,19 @@ function factorial(int $n): int
       </div>
     </div>
 
+        <?php if (isset($_SESSION['payment_error']) && $_SESSION['payment_error'] !== ''): ?>
+          <script>
+            document.addEventListener('DOMContentLoaded', function(){
+              try {
+                var overlay = document.getElementById('pay_overlay');
+                var ed = document.getElementById('payment_error');
+                if (ed) { ed.innerHTML = <?= json_encode($_SESSION['payment_error']) ?>; ed.style.display = 'block'; }
+                if (overlay) overlay.classList.add('open');
+              } catch(e) { console.error(e); }
+            });
+          </script>
+        <?php unset($_SESSION['payment_error']); endif; ?>
+
     <div class="overlay" id="addShowcaseModal">
       <div class="modal-box" style="max-width:520px; width:100%;">
         <div class="modal-header">
@@ -3533,7 +3582,7 @@ function factorial(int $n): int
               </div>
               <div id="digital_wallet_area" style="display:none;">
                 <div class="form-group">
-                  <label>Contact Number <span style="color:var(--red);">*</span></label>
+                  <label id="wallet_contact_label">Contact Number <span style="color:var(--red);">*</span></label>
                   <input type="text" id="wallet_contact" name="wallet_contact" placeholder="e.g., 09123456789">
                 </div>
                 <div class="form-group">
@@ -4044,7 +4093,7 @@ function factorial(int $n): int
             // Client-side validation
             if (pm && pm.value === 'Cash') {
               if (tenderedVal <= 0) {
-                tenderedField.setCustomValidity('Please enter the Amount Received');
+                tenderedField.setCustomValidity('Please enter Amount Received');
                 tenderedField.reportValidity();
                 tenderedField.focus();
                 return;
@@ -4064,9 +4113,15 @@ function factorial(int $n): int
               const contact = (contactEl.value || '').trim();
               const account = (accountEl.value || '').trim();
               const proof = proofEl.files.length > 0;
-              if (!contact) { contactEl.setCustomValidity('Please enter Contact Number'); contactEl.reportValidity(); contactEl.focus(); return; }
+              // Account/proof presence
               if (!account) { accountEl.setCustomValidity('Please enter Account Name'); accountEl.reportValidity(); accountEl.focus(); return; }
               if (!proof) { proofEl.setCustomValidity('Please upload Transaction Proof'); proofEl.reportValidity(); proofEl.focus(); return; }
+              // Method-specific contact/reference validation
+              if (pm.value === 'GCash') {
+                if (!/^[0-9]{13}$/.test(contact)) { contactEl.setCustomValidity('Reference Number must be exactly 13 digits (numbers only)'); contactEl.reportValidity(); contactEl.focus(); return; }
+              } else if (pm.value === 'Maya') {
+                if (!/^[0-9]{16}$/.test(contact)) { contactEl.setCustomValidity('Reference ID must be exactly 16 digits (numbers only)'); contactEl.reportValidity(); contactEl.focus(); return; }
+              }
             }
 
             // Prepare FormData and send via fetch so we can reliably print first
@@ -4081,15 +4136,29 @@ function factorial(int $n): int
                 return;
               }
 
-              // Update receipt and open print preview before navigating
+              const contentType = resp.headers.get('Content-Type') || '';
+              if (contentType.indexOf('application/json') !== -1) {
+                const j = await resp.json().catch(() => null);
+                if (j && j.status === 'ok' && j.redirect) {
+                  updateReceipt();
+                  printReceiptAuto();
+                  window.location = j.redirect;
+                  return;
+                } else if (j && j.status === 'error') {
+                  const err = j.message || 'Checkout failed';
+                  const ed = document.getElementById('payment_error');
+                  if (ed) { ed.innerHTML = err; ed.style.display = 'block'; }
+                  toast(err, 'red');
+                  return;
+                }
+              }
+
+              // Fallback: Update receipt and follow redirect if available
               updateReceipt();
               printReceiptAuto();
-
-              // Navigate to server response URL (will include success query)
-              if (resp.url) {
+              if (resp.redirected && resp.url) {
                 window.location = resp.url;
               } else {
-                // fallback: reload checkout page
                 window.location = '?page=checkout&success=1';
               }
             } catch (err) {
@@ -4117,11 +4186,24 @@ function factorial(int $n): int
           document.getElementById('wallet_contact').value = '';
           document.getElementById('wallet_account_name').value = '';
           document.getElementById('wallet_proof').value = '';
+          // reset wallet label and placeholder
+          const wlbl = document.getElementById('wallet_contact_label'); if (wlbl) wlbl.textContent = 'Contact Number';
+          const winput = document.getElementById('wallet_contact'); if (winput) winput.placeholder = 'e.g., 09123456789';
+          // clear any visible payment error and custom validity on wallet inputs
+          errorDiv.style.display = 'none';
+          try { document.getElementById('wallet_contact').setCustomValidity(''); } catch(e){}
+          try { document.getElementById('wallet_account_name').setCustomValidity(''); } catch(e){}
+          try { document.getElementById('wallet_proof').setCustomValidity(''); } catch(e){}
         } else if (method === 'GCash' || method === 'Maya') {
           cashArea.style.display = 'none';
           walletArea.style.display = 'block';
           // Clear cash field
           document.getElementById('amount_tendered').value = '';
+          // set wallet label/placeholder for selected method
+          const wlbl = document.getElementById('wallet_contact_label');
+          const winput = document.getElementById('wallet_contact');
+          if (wlbl) wlbl.textContent = method === 'GCash' ? 'Reference Number' : 'Reference ID';
+          if (winput) winput.placeholder = method === 'GCash' ? '13-digit reference number (numbers only)' : '16-digit reference ID (numbers only)';
           errorDiv.style.display = 'none';
         }
         
@@ -4155,8 +4237,9 @@ function factorial(int $n): int
           
           if (!contact || !account || !proof) {
             console.debug('wallet validation failed', { contact, account, proof });
+            const label = pm.value === 'GCash' ? 'Reference Number' : 'Reference ID';
             if (!contact) {
-              errorDiv.innerHTML = '⚠ Please enter Contact Number';
+              errorDiv.innerHTML = '⚠ Please enter ' + label;
               errorDiv.style.display = 'block';
               return;
             }
@@ -4171,9 +4254,19 @@ function factorial(int $n): int
               return;
             }
           } else {
+            // Additional format checks
+            if (pm.value === 'GCash' && !/^[0-9]{13}$/.test(contact)) {
+              errorDiv.innerHTML = '⚠ Reference Number must be exactly 13 digits (numbers only)';
+              errorDiv.style.display = 'block';
+              return;
+            }
+            if (pm.value === 'Maya' && !/^[0-9]{16}$/.test(contact)) {
+              errorDiv.innerHTML = '⚠ Reference ID must be exactly 16 digits (numbers only)';
+              errorDiv.style.display = 'block';
+              return;
+            }
             console.debug('wallet validation passed');
             errorDiv.style.display = 'none';
-            console.debug('wallet validation passed');
             // clear custom validity
             if (contactEl) { contactEl.setCustomValidity(''); }
             if (accountEl) { accountEl.setCustomValidity(''); }
@@ -5871,7 +5964,7 @@ if (!empty($r_sales_rows)):
           <div class="receipt-row" id="td_amount_received_row" style="display:none;"><span>Amount Received</span><span id="td_amount_received">&#8369;0.00</span></div>
           <div class="receipt-row" id="td_change_row" style="display:none;"><span>Change</span><span id="td_change">&#8369;0.00</span></div>
           <div id="td_wallet_area" style="display:none;margin-top:12px;">
-            <div class="receipt-row"><span>Contact Number</span><span id="td_wallet_contact">&#8212;</span></div>
+            <div class="receipt-row"><span id="td_wallet_contact_label">Contact Number</span><span id="td_wallet_contact">&#8212;</span></div>
             <div class="receipt-row"><span>Account Name</span><span id="td_wallet_account">&#8212;</span></div>
             <div style="margin-top:8px;"><a id="td_proof_link" href="#" target="_blank" style="display: inline-block; margin-top: 10px;">
             <img id="td_proof_img" src="" alt="Proof of Payment" style="display: none; max-width: 220px; max-height: 350px; width: auto; height: auto; object-fit: contain; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
@@ -5918,6 +6011,14 @@ if (!empty($r_sales_rows)):
           document.getElementById('td_amount_received_row').style.display = 'none';
           document.getElementById('td_change_row').style.display = 'none';
           document.getElementById('td_wallet_area').style.display = 'block';
+          // Set label depending on method
+          const labelEl = document.getElementById('td_wallet_contact_label');
+          const method = (d.payment_method || '').toString().toLowerCase();
+          if (labelEl) {
+            if (method === 'gcash') labelEl.textContent = 'Reference Number';
+            else if (method === 'maya') labelEl.textContent = 'Reference ID';
+            else labelEl.textContent = 'Contact Number';
+          }
           document.getElementById('td_wallet_contact').textContent = d.wallet_contact_number || d.wallet_contact || d.wallet_contact_number || '—';
           document.getElementById('td_wallet_account').textContent = d.wallet_account_name || d.wallet_account || '—';
           const proof = d.wallet_proof_image_url || d.wallet_proof_url || '';
