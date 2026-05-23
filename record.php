@@ -28,7 +28,7 @@ function formatDuration(int $seconds): string {
 function createSessionHistoryTableSql(): string {
     return <<<SQL
 CREATE TABLE IF NOT EXISTS session_history (
-  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    session_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   employee_id VARCHAR(50) NOT NULL,
   login_date DATE NOT NULL,
   login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -51,7 +51,7 @@ function getTodaySession(mysqli $conn, string $employeeId): ?array {
     $today = date('Y-m-d');
 
     $stmt = $conn->prepare(
-        'SELECT id, login_time, logout_time, duration_seconds FROM session_history WHERE employee_id = ? AND login_date = ? ORDER BY id DESC LIMIT 1'
+        'SELECT session_id, login_time, logout_time, duration_seconds FROM session_history WHERE employee_id = ? AND login_date = ? ORDER BY session_id DESC LIMIT 1'
     );
     $stmt->bind_param('ss', $employeeId, $today);
     $stmt->execute();
@@ -75,20 +75,20 @@ function recordLogin(mysqli $conn, string $employeeId): ?int {
     if ($todaySession !== null) {
         if ($todaySession['logout_time'] === null) {
             // Already active today: keep the open row and reuse it.
-            $_SESSION['session_history_id'] = (int)$todaySession['id'];
-            return (int)$todaySession['id'];
+            $_SESSION['session_history_id'] = (int)$todaySession['session_id'];
+            return (int)$todaySession['session_id'];
         }
 
         // Same-day re-login: reuse today's row and keep accumulated duration_seconds.
         $stmt = $conn->prepare(
-            'UPDATE session_history SET login_time = ?, logout_time = NULL WHERE id = ?'
+            'UPDATE session_history SET login_time = ?, logout_time = NULL WHERE session_id = ?'
         );
-        $stmt->bind_param('si', $loginTime, $todaySession['id']);
+        $stmt->bind_param('si', $loginTime, $todaySession['session_id']);
         $stmt->execute();
         $stmt->close();
 
-        $_SESSION['session_history_id'] = (int)$todaySession['id'];
-        return (int)$todaySession['id'];
+        $_SESSION['session_history_id'] = (int)$todaySession['session_id'];
+        return (int)$todaySession['session_id'];
     }
 
     $stmt = $conn->prepare(
@@ -111,12 +111,12 @@ function recordLogout(mysqli $conn, string $employeeId, ?int $historyId = null):
 
     if ($historyId !== null) {
         $stmt = $conn->prepare(
-            'SELECT id, login_time, duration_seconds FROM session_history WHERE id = ? AND employee_id = ? AND logout_time IS NULL LIMIT 1'
+            'SELECT session_id, login_time, duration_seconds FROM session_history WHERE session_id = ? AND employee_id = ? AND logout_time IS NULL LIMIT 1'
         );
         $stmt->bind_param('is', $historyId, $employeeId);
     } else {
         $stmt = $conn->prepare(
-            'SELECT id, login_time, duration_seconds FROM session_history WHERE employee_id = ? AND logout_time IS NULL ORDER BY login_time DESC LIMIT 1'
+            'SELECT session_id, login_time, duration_seconds FROM session_history WHERE employee_id = ? AND logout_time IS NULL ORDER BY login_time DESC LIMIT 1'
         );
         $stmt->bind_param('s', $employeeId);
     }
@@ -137,9 +137,9 @@ function recordLogout(mysqli $conn, string $employeeId, ?int $historyId = null):
     $duration = formatDuration($durationSeconds);
 
     $stmt = $conn->prepare(
-        'UPDATE session_history SET logout_time = ?, duration_seconds = ?, duration = ? WHERE id = ?'
+        'UPDATE session_history SET logout_time = ?, duration_seconds = ?, duration = ? WHERE session_id = ?'
     );
-    $stmt->bind_param('sisi', $logoutTime, $durationSeconds, $duration, $sessionRow['id']);
+    $stmt->bind_param('sisi', $logoutTime, $durationSeconds, $duration, $sessionRow['session_id']);
     $success = $stmt->execute();
     $stmt->close();
 
@@ -154,7 +154,7 @@ function getSessionHistory(mysqli $conn, string $employeeId, int $limit = 20): a
     }
 
     $stmt = $conn->prepare(
-        'SELECT id, login_date, login_time, logout_time, duration, duration_seconds
+        'SELECT session_id, login_date, login_time, logout_time, duration, duration_seconds
          FROM session_history
          WHERE employee_id = ?
          ORDER BY login_time DESC
@@ -176,7 +176,7 @@ function getActiveSessionHistory(mysqli $conn, string $employeeId): ?array {
     }
 
     $stmt = $conn->prepare(
-        'SELECT id, login_time, logout_time, duration, duration_seconds
+        'SELECT session_id, login_time, logout_time, duration, duration_seconds
          FROM session_history
          WHERE employee_id = ? AND logout_time IS NULL
          ORDER BY login_time DESC

@@ -77,7 +77,7 @@ INSERT INTO `customers` (`customer_id`, `full_name`, `contact_info`, `photo_url`
 --
 
 CREATE TABLE `customer_approval_history` (
-  `id` int(11) NOT NULL,
+  `approval_id` int(11) NOT NULL,
   `customer_id` int(11) NOT NULL,
   `action` varchar(32) NOT NULL,
   `by_employee_id` varchar(50) DEFAULT NULL,
@@ -138,14 +138,14 @@ INSERT INTO `employees` (`employee_id`, `full_name`, `role`, `job_role`, `passco
 --
 
 CREATE TABLE `session_history` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `session_id` int(11) NOT NULL AUTO_INCREMENT,
   `employee_id` varchar(50) NOT NULL,
   `login_date` date NOT NULL,
   `login_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `logout_time` datetime DEFAULT NULL,
   `duration_seconds` int(11) DEFAULT NULL,
   `duration` varchar(16) DEFAULT NULL,
-  PRIMARY KEY (`id`),
+  PRIMARY KEY (`session_id`),
   KEY `idx_employee_active` (`employee_id`, `logout_time`),
   KEY `idx_employee_login` (`employee_id`, `login_time`),
   CONSTRAINT `fk_session_history_employee` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON UPDATE CASCADE ON DELETE RESTRICT
@@ -264,7 +264,7 @@ ALTER TABLE `customers`
 -- Indexes for table `customer_approval_history`
 --
 ALTER TABLE `customer_approval_history`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`approval_id`);
 
 --
 -- Indexes for table `discounts`
@@ -329,7 +329,7 @@ ALTER TABLE `customers`
 -- AUTO_INCREMENT for table `customer_approval_history`
 --
 ALTER TABLE `customer_approval_history`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `approval_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `discounts`

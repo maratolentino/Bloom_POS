@@ -325,7 +325,7 @@ if ($colCheckRej && $colCheckRej->num_rows === 0) {
 // Ensure approval history table exists
 $historyCheck = $conn->query("SHOW TABLES LIKE 'customer_approval_history'");
 if ($historyCheck && $historyCheck->num_rows === 0) {
-  $conn->query("CREATE TABLE customer_approval_history (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, customer_id INT NOT NULL, action VARCHAR(32) NOT NULL, by_employee_id VARCHAR(50) NULL, note VARCHAR(255) NULL, ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  $conn->query("CREATE TABLE customer_approval_history (approval_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, customer_id INT NOT NULL, action VARCHAR(32) NOT NULL, by_employee_id VARCHAR(50) NULL, note VARCHAR(255) NULL, ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
 // Ensure promotion tracking columns exist in sales table
