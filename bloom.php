@@ -12,12 +12,24 @@ require_once __DIR__ . '/Inventory.inc.php';
 $auth_error = "";
 $reg_error = "";
 $store_info = array("name"=>"Bloom POS","address"=>"Calamba, Laguna","contact"=>"0912-345-6789","tax_rate"=>0.12);
-$accepted_payments = str_getcsv("Cash,GCash,Maya,Credit/Debit Card");
+$accepted_payments = str_getcsv("Cash,GCash,Maya,Credit/Debit Card", ',', '"', '\\');
 $paymentsRef = &$accepted_payments;
 $paymentKeys = array_keys($accepted_payments);
 $page = isset($_GET["page"]) ? $_GET["page"] : "login";
 
 // Database connection
+// Defensive: ensure mysqli extension is present to avoid fatal errors in environments
+// where the CLI PHP binary lacks mysqli (e.g., some lightweight installs).
+if (!class_exists('mysqli')) {
+  if (php_sapi_name() === 'cli-server') {
+    header('Content-Type: application/json');
+    echo json_encode(['status'=>'error','message'=>'PHP mysqli extension is not available in this PHP binary. Enable extension=mysqli in php.ini or run under XAMPP/Apache.']);
+    exit;
+  } else {
+    die('PHP mysqli extension is not available. Enable extension=mysqli in php.ini or run under XAMPP/Apache.');
+  }
+}
+
 $conn = new mysqli('127.0.0.1', 'root', '', 'bloom_pos');
 if ($conn->connect_error) {
   header('Content-Type: application/json');
@@ -5885,7 +5897,39 @@ function factorial(int $n): int
               document.getElementById('productModal').classList.add('open');
             }
 
-            const inventoryItems = <?= json_encode($inventory, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+            const inventoryItems = (function(){
+              try {
+                return JSON.parse(atob('<?= base64_encode(json_encode($inventory, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>'));
+              } catch (err) {
+                console.error('Failed to parse inventoryItems', err);
+                return [];
+              }
+            })();
+
+            // Ensure the product form always sends the action name (button name) even when submitted programmatically
+            (function(){
+              try {
+                const prodForm = document.getElementById('prod_form');
+                if (!prodForm) return;
+                prodForm.addEventListener('submit', function(e){
+                  try {
+                    const btn = document.getElementById('prod_submit_btn');
+                    if (btn && btn.name) {
+                      let hidden = this.querySelector('input[name="' + btn.name + '"]');
+                      if (!hidden) {
+                        hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.name = btn.name;
+                        hidden.value = '1';
+                        this.appendChild(hidden);
+                      } else {
+                        hidden.value = '1';
+                      }
+                    }
+                  } catch (ex) { console.error(ex); }
+                });
+              } catch (ex) { console.error(ex); }
+            })();
 
             function openEditModal(data, title = 'Edit Product') {
               document.getElementById('prod_modal_title').textContent = title;
@@ -6193,6 +6237,7 @@ function factorial(int $n): int
                 }
               });
             });
+          </script>
 
           <script>
             // Client-side search for CRM table
