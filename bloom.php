@@ -672,8 +672,23 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
 
 // ── Inventory CRUD ────────────────────────────────────────────
 if ($page === "inventory" && isset($_SESSION["user_role"]) && $_SESSION["user_role"] === "Admin") {
-  function isValidProductSku(string $sku): bool {
+  function isValidBaseProductSku(string $sku): bool {
     return preg_match('/^[A-Za-z]+-\d{3}$/', $sku) === 1;
+  }
+
+  function isValidVariantSku(string $sku): bool {
+    return preg_match('/^[A-Za-z]+-\d{3}-V\d+$/', $sku) === 1;
+  }
+
+  function isValidProductSku(string $sku): bool {
+    return isValidBaseProductSku($sku) || isValidVariantSku($sku);
+  }
+
+  function getVariantBaseSku(string $sku): string {
+    if (preg_match('/^([A-Za-z]+-\d{3})(?:-V\d+)?$/', $sku, $matches)) {
+      return $matches[1];
+    }
+    return '';
   }
 
   function normalizeProductSku(string $sku): string {
@@ -698,10 +713,20 @@ if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_P
       $sku = getNextProductSku($conn);
     }
 
-    if (!isValidProductSku($sku)) {
-      $_SESSION['inventory_error'] = 'SKU must follow the format PR-001 and only use letters before the dash.';
-      header('Location: ?page=inventory&tab=items');
-      exit;
+    // Determine whether this operation should validate as a variant
+    $editing_variant = $is_variant || isValidVariantSku($old_sku);
+    if ($editing_variant) {
+      if (!isValidVariantSku($sku)) {
+        $_SESSION['inventory_error'] = 'Variant SKU must follow the format PR-001-V1 and be generated from the parent product.';
+        header('Location: ?page=inventory&tab=items');
+        exit;
+      }
+    } else {
+      if (!isValidBaseProductSku($sku)) {
+        $_SESSION['inventory_error'] = 'SKU must follow the format PR-001 and only use letters before the dash.';
+        header('Location: ?page=inventory&tab=items');
+        exit;
+      }
     }
 
     if (!$is_variant && !is_float($price)) {
@@ -712,6 +737,12 @@ if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_P
     $image_path = "";
     if ($is_variant) {
       $orig_sku = normalizeProductSku(isset($_POST["original_sku"]) ? $_POST["original_sku"] : "");
+      if (!isValidBaseProductSku($orig_sku) || getVariantBaseSku($sku) !== $orig_sku) {
+        $_SESSION['inventory_error'] = 'Variant SKU must be derived from the parent SKU, for example PR-001-V1.';
+        header('Location: ?page=inventory&tab=items');
+        exit;
+      }
+
       $parent_stmt = $conn->prepare("SELECT price, category_id, discount_id, image_url FROM inventory WHERE sku = ?");
       if ($parent_stmt) {
         $parent_stmt->bind_param("s", $orig_sku);
@@ -825,16 +856,14 @@ if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_P
     $variant_name = $conn->real_escape_string($_POST["variant_name"] ?? "");
     $variant_qty  = (int)($_POST["variant_qty"] ?? 0);
 
-    if (!isValidProductSku($new_sku) || !isValidProductSku($original_sku)) {
-      $_SESSION['inventory_error'] = 'Variant SKU must follow the format FLOWERNAME-001 and match the base product.';
+    if (!isValidVariantSku($new_sku) || !isValidBaseProductSku($original_sku)) {
+      $_SESSION['inventory_error'] = 'Variant SKU must follow the format PR-001-V1 and derive from the original product.';
       header('Location: ?page=inventory&tab=items');
       exit;
     }
 
-    $original_base = explode('-', $original_sku)[0];
-    $variant_base  = explode('-', $new_sku)[0];
-    if ($original_base !== $variant_base) {
-      $_SESSION['inventory_error'] = 'Variant SKU must share the same flower name base as the original product.';
+    if (getVariantBaseSku($new_sku) !== $original_sku) {
+      $_SESSION['inventory_error'] = 'Variant SKU must be based on the original SKU, for example PR-001-V1.';
       header('Location: ?page=inventory&tab=items');
       exit;
     }
@@ -1151,6 +1180,25 @@ if ($hist_res) {
     $cid = $h['customer_id'];
     if (!isset($historyMap[$cid])) $historyMap[$cid] = [];
     $historyMap[$cid][] = $h;
+  }
+}
+
+// Fetch customer transaction history and map by customer_id
+$customerSalesMap = [];
+$sales_res = $conn->query("SELECT s.*, e.full_name as cashier FROM sales s LEFT JOIN employees e ON s.employee_id=e.employee_id WHERE s.customer_id IS NOT NULL ORDER BY s.sale_date DESC");
+if ($sales_res) {
+  while ($sale = $sales_res->fetch_assoc()) {
+    $sale['items'] = [];
+    $txn_esc = $conn->real_escape_string($sale['transaction_id']);
+    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.transaction_id='$txn_esc'");
+    if ($items_res) {
+      while ($item = $items_res->fetch_assoc()) {
+        $sale['items'][] = $item;
+      }
+    }
+    $cid = (int)$sale['customer_id'];
+    if (!isset($customerSalesMap[$cid])) $customerSalesMap[$cid] = [];
+    $customerSalesMap[$cid][] = $sale;
   }
 }
 
@@ -5487,10 +5535,14 @@ function factorial(int $n): int
                         </div>
                         <div class="inv-card-stock">Stock: <?= $item['stock_qty'] ?></div>
                         <div class="inv-actions" style="margin-top: 10px; width: 100%;">
+                          <?php if (!preg_match('/-V\\d+$/i', $item['sku'])): ?>
                             <button type="button" class="btn-variant" style="width: 100%;" onclick="event.stopPropagation(); openVariantModal(<?= htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8') ?>)">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                                Add Variant
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                              Add Variant
                             </button>
+                          <?php else: ?>
+                            <button type="button" class="btn-variant" style="width:100%; opacity:0.6; cursor:not-allowed;" disabled title="Cannot add a variant to another variant">Add Variant</button>
+                          <?php endif; ?>
                         </div>
 
                       </div>
@@ -5619,8 +5671,8 @@ function factorial(int $n): int
               </div>
               <form method="POST" action="?page=inventory&tab=items" enctype="multipart/form-data" id="prod_form">
                 <input type="hidden" name="old_sku" id="hidden_sku">
-                <div class="form-group"><label>SKU / ID</label><input type="text" name="sku" id="form_sku" placeholder="PR-001" pattern="PR-[0-9]{3}" title="SKU is generated automatically as PR-001, PR-002, etc." readonly tabindex="-1" style="pointer-events:none; background:#f4f1ee; color:#333; cursor:not-allowed;" required></div>
-                <div class="form-group"><label>Product Name</label><input type="text" name="name" id="form_name" placeholder="Product name" required pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')"></div>
+                <div class="form-group"><label>SKU / ID</label><input type="text" name="sku" id="form_sku" placeholder="PR-001" pattern="^PR-[0-9]{3}(?:-V[0-9]+)?$" title="SKU format: PR-001 or PR-001-V1 (variants)" readonly tabindex="-1" style="pointer-events:none; background:#f4f1ee; color:#333; cursor:not-allowed;" required></div>
+                <div class="form-group"><label>Product Name</label><input type="text" name="name" id="form_name" placeholder="Product name" required title="Enter product name (any characters allowed)"></div>
                 <div class="form-row-3">
                   <div class="form-group"><label>Price (&#8369;)</label><input type="text" name="price" id="form_price" oninput="onPriceInput(this)" placeholder="0.00" required></div>
                   <div class="form-group"><label>VAT (12%)</label><input type="text" id="form_vat" readonly placeholder="0.00" style="background:#f4f1ee; color:#333;"></div>
@@ -5677,12 +5729,12 @@ function factorial(int $n): int
                 
                 <div class="form-group">
                   <label>New Variant SKU / ID</label>
-                  <input type="text" name="new_sku" id="variant_new_sku" placeholder="e.g. ROSE-002" pattern="[A-Za-z]+-[0-9]{3}" title="Use FLOWERNAME-001 format" oninput="this.value = this.value.toUpperCase()" required>
+                  <input type="text" name="new_sku" id="variant_new_sku" placeholder="e.g. PR-001-V1" pattern="^[A-Za-z]+-[0-9]{3}-V[0-9]+$" title="Variant SKU is automatically generated from the parent SKU, e.g. PR-001-V1." readonly style="background:#f4f1ee; color:#333; cursor:not-allowed;" required>
                 </div>
                 
                 <div class="form-group">
-                  <label>Variant Color / Specifics</label>
-                  <input type="text" name="variant_name" id="variant_new_name" placeholder="e.g. White Rose" required pattern="[A-Za-zÑñ ]+" title="Letters and spaces only" oninput="this.value = this.value.replace(/[^A-Za-zÑñ\s]/g,'')">
+                  <label>Variant Name</label>
+                  <input type="text" name="variant_name" id="variant_new_name" placeholder="Enter variant name" required>
                 </div>
                 
                 <div class="form-group">
@@ -5706,28 +5758,36 @@ function factorial(int $n): int
           </div>
 
           <script>
-          function getNextVariantSku(baseSku) {
-              const match = String(baseSku).toUpperCase().match(/^([A-Z]+)-(\d{3})$/);
-              if (!match) return baseSku + '-002';
-              const prefix = match[1];
+            function getNextVariantSku(baseSku) {
+              const normalized = String(baseSku).toUpperCase().trim();
+              const match = normalized.match(/^([A-Z]+-\d{3})(?:-V\d+)?$/);
+              if (!match) return normalized + '-V1';
+              const base = match[1];
               let maxIndex = 0;
               if (typeof inventoryItems !== 'undefined') {
                 inventoryItems.forEach(item => {
-                  const m = String(item.sku).toUpperCase().match(new RegExp('^' + prefix + '-(\\d{3})$'));
+                  const m = String(item.sku).toUpperCase().match(new RegExp('^' + base + '-V(\\d+)$'));
                   if (m) {
                     maxIndex = Math.max(maxIndex, parseInt(m[1], 10));
                   }
                 });
               }
-              return prefix + '-' + String(maxIndex + 1).padStart(3, '0');
+              return base + '-V' + String(maxIndex + 1);
           }
 
           function openVariantModal(item) {
+              const generatedSku = getNextVariantSku(item.sku);
               document.getElementById('variant_orig_sku').value = item.sku;
               document.getElementById('variant_orig_name').value = item.product_name + ' (' + item.sku + ')';
 
-              document.getElementById('variant_new_sku').value = getNextVariantSku(item.sku);
-              document.getElementById('variant_new_name').value = item.product_name + ' (Variant)';
+              const skuField = document.getElementById('variant_new_sku');
+              const nameField = document.getElementById('variant_new_name');
+              if (skuField) {
+                skuField.value = generatedSku;
+              }
+              if (nameField) {
+                nameField.value = generatedSku;
+              }
 
               document.getElementById('addVariantModal').classList.add('open');
           }
@@ -6134,41 +6194,6 @@ function factorial(int $n): int
               });
             });
 
-            // Approval history data injected from server
-            const CUST_HISTORY = <?= json_encode($historyMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?> || {};
-
-            function openHistory(cid) {
-              const modal = document.getElementById('historyModal');
-              const container = document.getElementById('historyContent');
-              container.innerHTML = '';
-              const items = CUST_HISTORY[cid] || [];
-              if (items.length === 0) {
-                container.innerHTML = '<div style="padding:12px; color:var(--text-3);">No history available.</div>';
-              } else {
-                items.forEach(it => {
-                  const t = document.createElement('div');
-                  t.style.padding = '10px 0';
-                  t.style.borderBottom = '1px solid #eee';
-                  t.innerHTML = `<div style="font-weight:700;">${escapeHtml(it.action)}</div><div style="font-size:12px; color:var(--text-3);">${escapeHtml(it.note || '')}</div><div style="font-size:12px; color:var(--text-3); margin-top:6px;">By: ${escapeHtml(it.by_employee_id || '')} &middot; ${escapeHtml(it.ts || '')}</div>`;
-                  container.appendChild(t);
-                });
-              }
-              modal.classList.add('open');
-            }
-
-            function escapeHtml(s) {
-              return String(s).replace(/[&<>\"']/g, function(m) {
-                return {
-                  '&': '&amp;',
-                  '<': '&lt;',
-                  '>': '&gt;',
-                  '"': '&quot;',
-                  "'": '&#39;'
-                } [m];
-              });
-            }
-          </script>
-
           <script>
             // Client-side search for CRM table
             (function() {
@@ -6189,13 +6214,6 @@ function factorial(int $n): int
           </script>
 
           <!-- History Modal -->
-          <div class="overlay" id="historyModal">
-            <div class="modal-box" style="max-width:600px;">
-              <div class="modal-header"><span class="modal-title">Customer Approval History</span><button class="modal-close" onclick="document.getElementById('historyModal').classList.remove('open')">&times;</button></div>
-              <div id="historyContent" style="padding:12px; max-height:400px; overflow:auto;"></div>
-            </div>
-          </div>
-
         <?php
         // ── CRM ──────────────────────────────────────────────────────
         elseif ($page === 'crm'): ?>
@@ -6292,7 +6310,7 @@ function factorial(int $n): int
                                   <button type="submit" name="delete_customer" class="btn btn-sm btn-danger" onclick="event.stopPropagation();">Delete</button>
                                 </form>
                               <?php endif; ?>
-                              <button type="button" onclick="event.stopPropagation(); openHistory(<?= $c['customer_id'] ?>);" class="btn btn-sm btn-secondary">History</button>
+                              <button type="button" data-history-customer-id="<?= $c['customer_id'] ?>" class="btn btn-sm btn-secondary cust-history-btn">History</button>
                             </div>
                           </td>
                         </tr>
@@ -6363,6 +6381,9 @@ function factorial(int $n): int
             // CRM row click handler to open Edit modal
             document.querySelectorAll('.crm-row-clickable').forEach(row => {
               row.addEventListener('click', function(e) {
+                if (e.target.closest('.cust-history-btn') || e.target.closest('button') || e.target.closest('form') || e.target.closest('input') || e.target.closest('a')) {
+                  return;
+                }
                 const custData = this.getAttribute('data-customer');
                 if (custData) {
                   try {
@@ -6373,6 +6394,102 @@ function factorial(int $n): int
                   }
                 }
               });
+            });
+          </script>
+
+          <!-- Customer History Modal -->
+          <div class="overlay" id="historyModal">
+            <div class="modal-box" style="max-width:600px;">
+              <div class="modal-header"><span class="modal-title">Customer Transaction History</span><button class="modal-close" onclick="document.getElementById('historyModal').classList.remove('open')">&times;</button></div>
+              <div id="historyContent" style="padding:12px; max-height:400px; overflow:auto;"></div>
+            </div>
+          </div>
+          <script>
+            const CUSTOMER_SALES = <?= json_encode($customerSalesMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?> || {};
+
+            function openHistory(cid) {
+              const modal = document.getElementById('historyModal');
+              const container = document.getElementById('historyContent');
+              const title = modal.querySelector('.modal-title');
+              if (title) {
+                title.textContent = 'Customer Transaction History';
+              }
+              container.innerHTML = '';
+              const items = CUSTOMER_SALES[cid] || [];
+              if (items.length === 0) {
+                container.innerHTML = '<div style="padding:12px; color:var(--text-3);">No transactions found for this customer.</div>';
+              } else {
+                items.forEach(it => {
+                  const tr = document.createElement('div');
+                  tr.style.padding = '12px 0';
+                  tr.style.borderBottom = '1px solid #eee';
+                  const orderId = it.transaction_id ? it.transaction_id : 'Unknown';
+                  const dateText = it.sale_date ? new Date(it.sale_date).toLocaleString() : 'Unknown date';
+
+                  const row = document.createElement('div');
+                  row.style.display = 'flex';
+                  row.style.justifyContent = 'space-between';
+                  row.style.gap = '12px';
+                  row.style.alignItems = 'center';
+
+                  const info = document.createElement('div');
+                  const titleEl = document.createElement('div');
+                  titleEl.style.fontWeight = '700';
+                  titleEl.textContent = 'Transaction: ' + orderId;
+                  const metaEl = document.createElement('div');
+                  metaEl.style.fontSize = '12px';
+                  metaEl.style.color = 'var(--text-3)';
+                  metaEl.style.marginTop = '4px';
+                  metaEl.textContent = dateText + ' · ' + (it.payment_method || 'Unknown payment');
+                  info.appendChild(titleEl);
+                  info.appendChild(metaEl);
+
+                  const summary = document.createElement('div');
+                  summary.style.textAlign = 'right';
+                  const amountEl = document.createElement('div');
+                  amountEl.style.fontWeight = '700';
+                  amountEl.style.color = 'var(--espresso)';
+                  amountEl.textContent = '₱' + Number(it.total_amount || 0).toFixed(2);
+                  const statusEl = document.createElement('div');
+                  statusEl.style.fontSize = '12px';
+                  statusEl.style.color = 'var(--text-3)';
+                  statusEl.style.marginTop = '4px';
+                  statusEl.textContent = it.status || 'Unknown';
+                  summary.appendChild(amountEl);
+                  summary.appendChild(statusEl);
+
+                  row.appendChild(info);
+                  row.appendChild(summary);
+
+                  const buttonRow = document.createElement('div');
+                  buttonRow.style.marginTop = '10px';
+                  buttonRow.style.display = 'flex';
+                  buttonRow.style.justifyContent = 'flex-end';
+
+                  const viewBtn = document.createElement('button');
+                  viewBtn.type = 'button';
+                  viewBtn.className = 'btn btn-sm btn-secondary';
+                  viewBtn.textContent = 'View Details';
+                  viewBtn.addEventListener('click', function() {
+                    viewTransactionDetails(it);
+                  });
+                  buttonRow.appendChild(viewBtn);
+
+                  tr.appendChild(row);
+                  tr.appendChild(buttonRow);
+                  container.appendChild(tr);
+                });
+              }
+              modal.classList.add('open');
+            }
+
+            document.addEventListener('click', function(event) {
+              const btn = event.target.closest('.cust-history-btn');
+              if (!btn) return;
+              const cid = btn.dataset.historyCustomerId;
+              if (!cid) return;
+              event.stopPropagation();
+              openHistory(cid);
             });
           </script>
 
