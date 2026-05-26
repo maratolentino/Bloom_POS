@@ -6444,7 +6444,7 @@ function factorial(int $n): int
 
           <!-- Customer History Modal -->
           <div class="overlay" id="historyModal">
-            <div class="modal-box" style="max-width:600px;">
+            <div class="modal-box" style="width:800px;">
               <div class="modal-header"><span class="modal-title">Customer Transaction History</span><button class="modal-close" onclick="document.getElementById('historyModal').classList.remove('open')">&times;</button></div>
               <div id="historyContent" style="padding:12px; max-height:400px; overflow:auto;"></div>
             </div>
@@ -6805,7 +6805,7 @@ if (!empty($r_sales_rows)):
 
   <!-- Transaction Details Modal -->
   <div class="overlay" id="transactionDetailModal">
-    <div class="modal-box" style="max-width:720px;">
+    <div class="modal-box" style="width:750px;">
       <div class="modal-header">
         <span class="modal-title">Transaction Details</span>
         <button class="modal-close" type="button" onclick="closeTransactionModal()">&times;</button>
