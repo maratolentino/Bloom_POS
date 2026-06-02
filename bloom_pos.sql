@@ -194,6 +194,23 @@ CREATE TABLE `showcase_bundles` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
+-- Table structure for table `showcase_sales`
+-- Records which showcase bundle was selected at checkout
+CREATE TABLE IF NOT EXISTS `showcase_sales` (
+  `bestseller_id` int(11) NOT NULL AUTO_INCREMENT,
+  `transaction_id` varchar(100) NOT NULL,
+  `showcase_id` int(11) DEFAULT NULL,
+  `bundle_name` varchar(200) DEFAULT NULL,
+  `quantity` int(11) NOT NULL DEFAULT 1,
+  `sale_date` datetime NOT NULL,
+  `employee_id` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`bestseller_id`),
+  KEY `idx_showcase_sale_date` (`sale_date`),
+  KEY `idx_showcase_id` (`showcase_id`),
+  CONSTRAINT `fk_showcase_sales_showcase` FOREIGN KEY (`showcase_id`) REFERENCES `showcase_bundles` (`showcase_id`) ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
 
 --
 -- Table structure for table `sales`
@@ -228,7 +245,7 @@ INSERT INTO `sales` (`transaction_id`, `sale_date`, `total_amount`, `tax_amount`
 -- Table structure for table `sale_items`
 --
 
-CREATE TABLE `sale_items` (
+CREATE TABLE `sale_items` ( 
   `id` int(11) NOT NULL,
   `transaction_id` varchar(50) NOT NULL,
   `sku` varchar(50) NOT NULL,

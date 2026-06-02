@@ -37,6 +37,8 @@ if ($conn->connect_error) {
   exit;
 }
 
+// Schema-managed: showcase_sales table should be created via bloom_pos.sql
+
 // Compute admin flag safely from session
 $is_admin = (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin');
 
@@ -657,6 +659,36 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
         $updatePoints->close();
       }
     }
+    // Record selected showcase bundle (if checkout was opened from a showcase selection)
+    $bundle_name_post = isset($_POST['bundle_name']) ? trim($_POST['bundle_name']) : '';
+    if ($bundle_name_post !== '') {
+      $bn_esc = $conn->real_escape_string($bundle_name_post);
+      $bundle_qty = 1;
+      $showcase_id = null;
+      $p = $conn->prepare("SELECT showcase_id FROM showcase_bundles WHERE name = ? LIMIT 1");
+      if ($p) {
+        $p->bind_param('s', $bn_esc);
+        $p->execute();
+        $p->bind_result($sid);
+        if ($p->fetch()) $showcase_id = (int)$sid;
+        $p->close();
+      }
+      if ($showcase_id !== null) {
+        $ins = $conn->prepare("INSERT INTO showcase_sales (transaction_id, showcase_id, bundle_name, quantity, sale_date, employee_id) VALUES (?,?,?,?,?,?)");
+        if ($ins) {
+          $ins->bind_param('sisiss', $transaction_id, $showcase_id, $bn_esc, $bundle_qty, $sale_date, $employee_id);
+          $ins->execute();
+          $ins->close();
+        }
+      } else {
+        $ins = $conn->prepare("INSERT INTO showcase_sales (transaction_id, bundle_name, quantity, sale_date, employee_id) VALUES (?,?,?,?,?)");
+        if ($ins) {
+          $ins->bind_param('ssiss', $transaction_id, $bn_esc, $bundle_qty, $sale_date, $employee_id);
+          $ins->execute();
+          $ins->close();
+        }
+      }
+    }
     // Compute a human-friendly order number for today's transactions (e.g. #1004)
     $sale_day_esc  = $conn->real_escape_string(date('Y-m-d', strtotime($sale_date)));
     $sale_date_esc = $conn->real_escape_string($sale_date);
@@ -1251,6 +1283,13 @@ if ($page === "reports") {
   $r_trx   = $conn->query("SELECT COUNT(*) as t FROM sales WHERE $r_where AND status='Completed'")->fetch_assoc()["t"];
   $r_sales = $conn->query("SELECT s.*,e.full_name as cashier FROM sales s LEFT JOIN employees e ON s.employee_id=e.employee_id WHERE $r_where ORDER BY s.sale_date DESC LIMIT 100");
   $r_top   = $conn->query("SELECT i.product_name,SUM(si.quantity) as cnt,SUM(si.subtotal) as rev FROM sale_items si JOIN inventory i ON si.sku=i.sku JOIN sales s ON si.transaction_id=s.transaction_id WHERE $r_where AND s.status='Completed' GROUP BY si.sku ORDER BY cnt DESC LIMIT 5");
+    // Determine best selling showcase bundle for the selected period
+    $r_best_bundle = '—';
+    $bestQ = $conn->query("SELECT COALESCE(sb.name, ss.bundle_name) as name, SUM(ss.quantity) as cnt FROM showcase_sales ss LEFT JOIN showcase_bundles sb ON ss.showcase_id=sb.showcase_id WHERE $r_where GROUP BY ss.showcase_id, ss.bundle_name ORDER BY cnt DESC LIMIT 1");
+    if ($bestQ && $bestQ->num_rows) {
+      $br = $bestQ->fetch_assoc();
+      if (!empty($br['name'])) $r_best_bundle = $br['name'];
+    }
 }
 
 $activeTab = isset($_GET["tab"]) ? $_GET["tab"] : "items";
@@ -6669,6 +6708,10 @@ function factorial(int $n): int
               <div class="stat-card">
                 <div class="stat-label">Avg. Order Value</div>
                 <div class="stat-value">&#8369;<?= $r_trx > 0 ? number_format($r_rev / $r_trx, 2) : '0.00' ?></div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Best Selling Bundle</div>
+                <div class="stat-value"><?= htmlspecialchars($r_best_bundle, ENT_QUOTES, 'UTF-8') ?></div>
               </div>
             </div>
 
