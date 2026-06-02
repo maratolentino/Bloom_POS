@@ -34,13 +34,6 @@ CREATE TABLE `categories` (
   `category_name` varchar(100) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `categories`
---
-
-INSERT INTO `categories` (`category_id`, `category_name`) VALUES
-(1, 'Vase Arrangements');
-
 -- --------------------------------------------------------
 
 --
@@ -62,13 +55,6 @@ CREATE TABLE `customers` (
   `approved_at` datetime DEFAULT NULL,
   `rejection_reason` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `customers`
---
-
-INSERT INTO `customers` (`customer_id`, `full_name`, `contact_info`, `photo_url`, `loyalty_points`, `member_since`, `contact_email`, `contact_number`, `approved`, `created_by`, `approved_by`, `approved_at`, `rejection_reason`) VALUES
-(1, 'princes', 'trdftyhujiok', '', 0, NULL, NULL, NULL, 1, NULL, NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -100,13 +86,6 @@ CREATE TABLE `discounts` (
   `expiry_date` date DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `discounts`
---
-
-INSERT INTO `discounts` (`discount_id`, `discount_name`, `discount_type`, `discount_value`, `status`, `expiry_date`) VALUES
-(1, 'bhb', '', 10.00, 1, '2026-05-14');
-
 -- --------------------------------------------------------
 
 --
@@ -123,14 +102,6 @@ CREATE TABLE `employees` (
   PRIMARY KEY (`employee_id`),
   CONSTRAINT `chk_employee_id_prefix` CHECK (LEFT(`employee_id`,3) = 'EMP')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `employees`
---
-
-INSERT INTO `employees` (`employee_id`, `full_name`, `role`, `job_role`, `passcode`, `photo_url`) VALUES
-('EMP-001', 'Aila Quimio', 'Admin', 'Manager', 'emp001', ''),
-('EMP-002', 'kimi', 'Cashier', 'Cashier', 'emp002', '');
 
 -- --------------------------------------------------------
 
@@ -167,13 +138,6 @@ CREATE TABLE `inventory` (
   `discount_id` int(11) DEFAULT NULL,
   `image_url` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `inventory`
---
-
-INSERT INTO `inventory` (`sku`, `product_name`, `price`, `stock_qty`, `category_id`, `discount_id`, `image_url`) VALUES
-('PR-001', 'Pink Roses', 2500.00, 1, 1, 1, '');
 
 -- --------------------------------------------------------
 
@@ -233,13 +197,6 @@ CREATE TABLE `sales` (
   `customer_id` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `sales`
---
-
-INSERT INTO `sales` (`transaction_id`, `sale_date`, `total_amount`, `tax_amount`, `discount_amount`, `payment_method`, `amount_tendered`, `wallet_contact_number`, `wallet_account_name`, `wallet_proof_image_url`, `status`, `employee_id`, `customer_id`) VALUES
-('TXN-EMP3619', '2026-05-19 21:22:43', 2800.00, 300.00, 0.00, 'Cash', 0.00, NULL, NULL, NULL, 'Completed', NULL, NULL);
-
 -- --------------------------------------------------------
 
 --
@@ -254,17 +211,6 @@ CREATE TABLE `sale_items` (
   `price_at_time` decimal(10,2) NOT NULL DEFAULT 0.00,
   `subtotal` decimal(10,2) NOT NULL DEFAULT 0.00
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `sale_items`
---
-
-INSERT INTO `sale_items` (`id`, `transaction_id`, `sku`, `quantity`, `price_at_time`, `subtotal`) VALUES
-(8, 'TXN-EMP3619', 'PR-001', 1, 2500.00, 2500.00);
-
---
--- Indexes for dumped tables
---
 
 --
 -- Indexes for table `categories`
