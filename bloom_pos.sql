@@ -192,7 +192,7 @@ CREATE TABLE `showcase_bundles` (
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`showcase_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
+ 
 -- --------------------------------------------------------
 -- Table structure for table `showcase_sales`
 -- Records which showcase bundle was selected at checkout
