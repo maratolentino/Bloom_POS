@@ -384,28 +384,39 @@ if ($page === "login" && $_SERVER["REQUEST_METHOD"] === "POST") {
   $emp_id   = isset($_POST["emp_id"])   ? trim($_POST["emp_id"])  : ""; //trim() to remove extra whitespace from employee ID input
   $passcode = isset($_POST["passcode"]) ? $_POST["passcode"]      : "";
 
-  // Validate employee ID format: must be EMP-### where ### is 001-999
-  if (!preg_match('/^EMP-(\d{3})$/', strtoupper($emp_id), $m) || (int)$m[1] < 1 || (int)$m[1] > 999) {
+  // Validate basic employee ID structure (case-insensitive): EMP-### where ### is 001-999
+  if (!preg_match('/^EMP-(\d{3})$/i', $emp_id, $m) || (int)$m[1] < 1 || (int)$m[1] > 999) {
     $auth_error = "Employee ID must follow the format EMP-001 through EMP-999.";
   } else {
-    // fetch account
-    $stmt = $conn->prepare("SELECT employee_id, full_name, role, passcode, photo_url FROM employees WHERE employee_id = ?");
+    // Lookup using uppercase form (DB stores uppercase IDs)
     $emp_id_up = strtoupper($emp_id);
+    $stmt = $conn->prepare("SELECT employee_id, full_name, role, passcode, photo_url FROM employees WHERE employee_id = ?");
     $stmt->bind_param("s", $emp_id_up);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
-    if ($row && strcmp($row["passcode"], $passcode) === 0) {  // strcmp() for exact string comparison of passcodes
-      // Set minimal session values (login system removed)
-      $_SESSION['user_id'] = $row['employee_id'];
-      $_SESSION['user_name'] = $row['full_name'];
-      $_SESSION['user_role'] = $row['role'];
-      $_SESSION['user_photo'] = isset($row['photo_url']) ? $row['photo_url'] : '';
-      ensureSessionHistoryTable($conn);
-      recordLogin($conn, $row['employee_id']);
-      header("Location: ?page=dashboard");
-      exit;
+
+    if (!$row) {
+      $auth_error = "Invalid Employee ID or passcode.";
+    } else {
+      // Enforce case-sensitive 'EMP' prefix for Admin/Owner accounts only
+      $role = isset($row['role']) ? $row['role'] : '';
+      $isAdminLike = (strcasecmp($role, 'Admin') === 0) || (strcasecmp($role, 'Owner') === 0);
+      if ($isAdminLike && strcmp(substr($emp_id, 0, 3), 'EMP') !== 0) {
+        $auth_error = "Admin accounts require the 'EMP' prefix to be uppercase when logging in.";
+      } elseif (strcmp($row["passcode"], $passcode) === 0) {  // strcmp() for exact string comparison of passcodes
+        // Successful login
+        $_SESSION['user_id'] = $row['employee_id'];
+        $_SESSION['user_name'] = $row['full_name'];
+        $_SESSION['user_role'] = $row['role'];
+        $_SESSION['user_photo'] = isset($row['photo_url']) ? $row['photo_url'] : '';
+        ensureSessionHistoryTable($conn);
+        recordLogin($conn, $row['employee_id']);
+        header("Location: ?page=dashboard");
+        exit;
+      } else {
+        $auth_error = "Invalid Employee ID or passcode.";
+      }
     }
-    $auth_error = "Invalid Employee ID or passcode.";
   }
 
   if (isset($_POST['remember_me'])) {
@@ -428,14 +439,16 @@ if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && $is_admin) 
   if (!is_bool($nameCheck) || $nameCheck !== true) {
     $reg_error = is_bool($nameCheck) ? "Invalid name." : $nameCheck;
   } else {
-    // Strict employee ID format: EMP-### with range 001-999
-    $emp_id_up = strtoupper($emp_id);
-    if (!preg_match('/^EMP-(\d{3})$/', $emp_id_up, $m) || (int)$m[1] < 1 || (int)$m[1] > 999) {
+    // Strict employee ID format: EMP-### with range 001-999 (case-sensitive)
+    // Require exact uppercase 'EMP' prefix using strcmp
+    if (strlen($emp_id) < 7 || strcmp(substr($emp_id, 0, 3), 'EMP') !== 0) {
+      $reg_error = "Employee ID must start with uppercase 'EMP' and follow EMP-001 format.";
+    } elseif (!preg_match('/^EMP-(\d{3})$/', $emp_id, $m) || (int)$m[1] < 1 || (int)$m[1] > 999) {
       $reg_error = "Employee ID must be in format EMP-001 to EMP-999.";
     } else {
       // Check uniqueness before attempting insert to avoid fatal DB errors
       $chk = $conn->prepare("SELECT 1 FROM employees WHERE employee_id = ? LIMIT 1");
-      $chk->bind_param("s", $emp_id_up);
+      $chk->bind_param("s", $emp_id);
       $chk->execute();
       $res = $chk->get_result();
       if ($res && $res->num_rows > 0) {
@@ -455,7 +468,7 @@ if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && $is_admin) 
     }
 
     $stmt = $conn->prepare("INSERT INTO employees (employee_id, full_name, role, passcode, job_role, photo_url) VALUES (?,?,?,?,?,?)");
-    $stmt->bind_param("ssssss", $emp_id_up, $name, $role, $passcode, $job_role, $photo_path);
+    $stmt->bind_param("ssssss", $emp_id, $name, $role, $passcode, $job_role, $photo_path);
     //                 ^^^^^^ 6 s's — one per ? placeholder
 
     if ($stmt->execute()) {

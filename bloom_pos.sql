@@ -120,7 +120,8 @@ CREATE TABLE `employees` (
   `job_role` varchar(100) DEFAULT NULL,
   `passcode` varchar(255) NOT NULL,
   `photo_url` varchar(255) DEFAULT NULL,
-  PRIMARY KEY (`employee_id`)
+  PRIMARY KEY (`employee_id`),
+  CONSTRAINT `chk_employee_id_prefix` CHECK (LEFT(`employee_id`,3) = 'EMP')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
