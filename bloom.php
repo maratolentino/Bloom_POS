@@ -3316,8 +3316,9 @@ function factorial(int $n): int
           <div class="modal-copy-block">
             <div style="margin-bottom:18px;">
               <div class="modal-bundle-name" id="showcaseModalName"></div>
-              <div class="modal-bundle-sub" id="showcaseModalMeta"></div>
+              <div class="showcase-stock-warning" id="showcaseModalStockStatus" aria-live="polite"></div>
             </div>
+            <div class="modal-bundle-sub" id="showcaseModalMeta"></div>
             <div class="modal-bundle-description" id="showcaseModalDescription"></div>
             <button type="button" class="btn btn-primary btn-full btn-lg" id="showcaseModalAction">Bloom your own bouquet</button>
           </div>
@@ -3393,9 +3394,12 @@ function factorial(int $n): int
       .modal-image-block { background:var(--oatmeal); border-radius:22px; padding:24px; display:flex; align-items:center; justify-content:center; }
       .modal-image-placeholder { width:100%; min-height:360px; border-radius:20px; background:linear-gradient(135deg, #f8d1d1, #e5daf5); display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--text-3); text-align:center; padding:24px; }
       .modal-copy-block { display:flex; flex-direction:column; justify-content:space-between; }
-      .modal-bundle-name { font-size:28px; font-weight:800; color:var(--espresso); margin-bottom:8px; }
-      .modal-bundle-sub { font-size:13px; color:var(--text-3); margin-bottom:18px; text-transform:uppercase; letter-spacing:.08em; }
+      .modal-bundle-name { font-size:28px; font-weight:800; color:var(--espresso); margin:0; }
+      .showcase-stock-warning { display:none; font-size:13px; font-weight:700; color:#d14343; margin:8px 0 0; padding:.35em .75em; border-radius:999px; background:rgba(209,67,67,.1); letter-spacing:.02em; text-transform:uppercase; }
+      .showcase-stock-warning.is-insufficient { display:inline-flex; color:#d14343; }
+      .modal-bundle-sub { font-size:13px; color:var(--text-3); margin:12px 0 18px; text-transform:uppercase; letter-spacing:.08em; }
       .modal-bundle-description { font-size:15px; line-height:1.7; color:var(--text-2); margin-bottom:24px; }
+      .btn.btn-disabled { opacity:.56 !important; cursor:not-allowed !important; pointer-events:none !important; }
       .showcase-footer { margin-top:32px; }
       .sub-carousel { display:flex; align-items:center; gap:12px; }
       .sub-track-window { overflow:hidden; flex:1; }
@@ -3413,6 +3417,7 @@ function factorial(int $n): int
 
     <script>
       const SHOWCASE_BUNDLES = <?= json_encode($showcaseBundles, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+      const allProducts = <?= json_encode($inventory, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       // Normalize server-side keys to friendly JS names (image_url -> imageUrl)
       (function(){
         for (let i = 0; i < SHOWCASE_BUNDLES.length; i++) {
@@ -3454,6 +3459,46 @@ function factorial(int $n): int
       const SHOWCASE_IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
       let subSlide = 0;
 
+      function getShowcaseCategoryStock(categoryKey) {
+        const keys = {
+          main: ['main'],
+          filler: ['filler'],
+          greenery: ['greenery']
+        };
+        return allProducts.reduce((total, item) => {
+          if (!item) return total;
+          let category = '';
+          if (item.category) category = String(item.category).trim().toLowerCase();
+          else if (item.category_name) category = String(item.category_name).trim().toLowerCase();
+          return keys[categoryKey].includes(category) ? total + (parseInt(item.stock_qty, 10) || 0) : total;
+        }, 0);
+      }
+
+      function updateShowcaseStockStatus(bundle, stockStatusEl, actionBtn) {
+        const requiredMain = Number(bundle.main || 0);
+        const requiredFillers = Number(bundle.fillers || 0);
+        const requiredGreenery = Number(bundle.greenery || 0);
+        const availableMain = getShowcaseCategoryStock('main');
+        const availableFillers = getShowcaseCategoryStock('filler');
+        const availableGreenery = getShowcaseCategoryStock('greenery');
+        const insufficient = requiredMain > availableMain || requiredFillers > availableFillers || requiredGreenery > availableGreenery;
+
+        if (stockStatusEl) {
+          stockStatusEl.textContent = insufficient ? 'Not Enough Stocks' : '';
+          stockStatusEl.classList.toggle('is-insufficient', insufficient);
+          stockStatusEl.style.display = insufficient ? 'inline-flex' : 'none';
+        }
+
+        if (actionBtn) {
+          actionBtn.disabled = insufficient;
+          actionBtn.setAttribute('aria-disabled', insufficient ? 'true' : 'false');
+          actionBtn.classList.toggle('btn-disabled', insufficient);
+          if (!insufficient) {
+            actionBtn.style.opacity = '';
+            actionBtn.style.pointerEvents = '';
+          }
+        }
+      }
 
       function openShowcaseModal(index) {
         const bundle = SHOWCASE_BUNDLES[index];
@@ -3463,6 +3508,7 @@ function factorial(int $n): int
         const desc = document.getElementById('showcaseModalDescription');
         const image = document.getElementById('showcaseModalImage');
         const action = document.getElementById('showcaseModalAction');
+        const stockStatus = document.getElementById('showcaseModalStockStatus');
 
         if (label) label.textContent = bundle.name;
         if (name) name.textContent = bundle.name;
@@ -3479,12 +3525,15 @@ function factorial(int $n): int
             image.textContent = '';
           }
         }
-        if (action) action.onclick = function() {
-          window.location = '?page=checkout&bundle_name=' + encodeURIComponent(bundle.name)
-            + '&main=' + bundle.main
-            + '&fillers=' + bundle.fillers
-            + '&greenery=' + bundle.greenery;
-        };
+        if (action) {
+          action.onclick = function() {
+            window.location = '?page=checkout&bundle_name=' + encodeURIComponent(bundle.name)
+              + '&main=' + bundle.main
+              + '&fillers=' + bundle.fillers
+              + '&greenery=' + bundle.greenery;
+          };
+          updateShowcaseStockStatus(bundle, stockStatus, action);
+        }
 
         subSlide = index;
         renderSubTrack(index);
