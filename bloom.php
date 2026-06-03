@@ -6887,20 +6887,26 @@ function factorial(int $n): int
             </div>
           </div>
 
-
+          <!-- Reset Passcode Modal -->
           <div class="overlay" id="resetPassModal">
             <div class="modal-box" style="max-width:340px;">
               <div class="modal-header">
                 <span class="modal-title">Reset Passcode</span>
                 <button class="modal-close" onclick="document.getElementById('resetPassModal').classList.remove('open')">&times;</button>
               </div>
+              <!-- Form sets new passcode for employee -->
               <form method="POST" action="?page=employees" enctype="multipart/form-data">
                 <input type="hidden" name="employee_id" id="reset_emp_id">
                 <div class="form-group"><label>New Passcode</label><input type="password" name="new_passcode" required></div>
+                <div style="margin:10px 0;">
+                  <button type="button" id="suggestPassBtn" class="btn btn-secondary btn-full" onclick="suggestPasscode()">Suggest Passcode</button>
+                </div>
                 <button type="submit" name="reset_passcode" class="btn btn-primary btn-full">Set Passcode</button>
               </form>
             </div>
           </div>
+
+          <!-- Script for handling Edit Employee modal population and Reset Passcode generation -->
           <script>
             function openEditEmp(e) {
               document.getElementById('edit_emp_id').value = e.employee_id;
@@ -6911,6 +6917,36 @@ function factorial(int $n): int
             document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
               if (e.target === o) o.classList.remove('open');
             }));
+              
+              // `rand(min,max)` returns integer in [min,max]
+              function rand(min, max) {
+                min = Math.floor(min);
+                max = Math.floor(max);
+                if (max <= min) return min;
+                return Math.floor(Math.random() * (max - min + 1)) + min;
+              }
+
+              // Generate a random passcode (numbers, letters, special symbols)
+              function suggestPasscode() {
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+[]{};:,.<>?';
+                const len = 12;
+                let pc = '';
+                for (let i = 0; i < len; i++) {
+                  pc += chars.charAt(rand(0, chars.length - 1));
+                }
+                const input = document.querySelector('#resetPassModal input[name="new_passcode"]');
+                if (input) {
+                  input.value = pc;
+                  // briefly show the generated passcode in plain text so admin can verify it
+                  const prevType = input.type;
+                  try {
+                    input.type = 'text';
+                    setTimeout(() => { input.type = prevType; }, 4000);
+                  } catch (e) {
+                    // ignore if browser restricts changing type
+                  }
+                }
+              }
           </script>
 
             <!-- Employee History Modal -->
