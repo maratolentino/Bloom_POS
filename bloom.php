@@ -562,7 +562,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
 
   $is_walk_in      = is_null($customer_id);
 
-  $transaction_id = generateTransactionRef($employee_id);
+  $order_id = generateOrderId($conn);
 
   // Handle wallet payment details
   $wallet_contact = "";
@@ -581,7 +581,8 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
       }
       
       $file_ext = pathinfo($_FILES["wallet_proof"]["name"], PATHINFO_EXTENSION);
-      $filename = $transaction_id . "_" . time() . "." . $file_ext;
+      // Strip the leading '#' so the wallet-proof filename stays URL/filesystem safe.
+      $filename = ltrim($order_id, '#') . "_" . time() . "." . $file_ext;
       $filepath = $upload_dir . $filename;
       
       if (move_uploaded_file($_FILES["wallet_proof"]["tmp_name"], $filepath)) {
@@ -637,14 +638,14 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
   $promotion_type = (isset($_POST["promotion_type"]) && $_POST["promotion_type"] !== "") ? $conn->real_escape_string($_POST["promotion_type"]) : null;
 
   if ($hasWalletCols) {
-    $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+    $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
     if ($stmt) {
-      $stmt->bind_param("ssdddsdsssisssi", $transaction_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
+      $stmt->bind_param("ssdddsdsssisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
     }
   } else {
-    $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+    $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
     if ($stmt) {
-      $stmt->bind_param("ssdddsdisssi", $transaction_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
+      $stmt->bind_param("ssdddsdisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
     }
   }
 
@@ -654,7 +655,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
       $qty   = (int)$item["qty"];
       $price = floatval($item["price"]);
       $sub   = $price * $qty;
-      $conn->query("INSERT INTO sale_items (transaction_id,sku,quantity,price_at_time,subtotal) VALUES ('$transaction_id','$sku',$qty,$price,$sub)");
+      $conn->query("INSERT INTO sale_items (order_id,sku,quantity,price_at_time,subtotal) VALUES ('$order_id','$sku',$qty,$price,$sub)");
       $conn->query("UPDATE inventory SET stock_qty = stock_qty - $qty WHERE sku = '$sku' AND stock_qty >= $qty");
     }
     if ($customer_id) {
@@ -693,29 +694,24 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
         $p->close();
       }
       if ($showcase_id !== null) {
-        $ins = $conn->prepare("INSERT INTO showcase_sales (transaction_id, showcase_id, bundle_name, quantity, sale_date, employee_id) VALUES (?,?,?,?,?,?)");
+        $ins = $conn->prepare("INSERT INTO showcase_sales (order_id, showcase_id, bundle_name, quantity, sale_date, employee_id) VALUES (?,?,?,?,?,?)");
         if ($ins) {
-          $ins->bind_param('sisiss', $transaction_id, $showcase_id, $bn_esc, $bundle_qty, $sale_date, $employee_id);
+          $ins->bind_param('sisiss', $order_id, $showcase_id, $bn_esc, $bundle_qty, $sale_date, $employee_id);
           $ins->execute();
           $ins->close();
         }
       } else {
-        $ins = $conn->prepare("INSERT INTO showcase_sales (transaction_id, bundle_name, quantity, sale_date, employee_id) VALUES (?,?,?,?,?)");
+        $ins = $conn->prepare("INSERT INTO showcase_sales (order_id, bundle_name, quantity, sale_date, employee_id) VALUES (?,?,?,?,?)");
         if ($ins) {
-          $ins->bind_param('ssiss', $transaction_id, $bn_esc, $bundle_qty, $sale_date, $employee_id);
+          $ins->bind_param('ssiss', $order_id, $bn_esc, $bundle_qty, $sale_date, $employee_id);
           $ins->execute();
           $ins->close();
         }
       }
     }
-    // Compute a human-friendly order number for today's transactions (e.g. #1004)
-    $sale_day_esc  = $conn->real_escape_string(date('Y-m-d', strtotime($sale_date)));
-    $sale_date_esc = $conn->real_escape_string($sale_date);
-    $txn_esc       = $conn->real_escape_string($transaction_id);
-    $pos_row = $conn->query("SELECT COUNT(*) as n FROM sales WHERE DATE(sale_date)='$sale_day_esc' AND status='Completed' AND (sale_date < '$sale_date_esc' OR (sale_date = '$sale_date_esc' AND transaction_id <= '$txn_esc'))")->fetch_assoc();
-    $pos_n = $pos_row ? (int)$pos_row['n'] : 1;
-    $order_num = '#' . (1000 + $pos_n);
-    $order_id_display = $order_num;
+    // The stored order_id already IS the human-friendly checkout order number
+    // (e.g. #1001, #1002), generated by generateOrderId(). Use it directly.
+    $order_id_display = $order_id;
     $redirect_url = '?page=checkout&success=1&order_id=' . urlencode($order_id_display);
     // Clear the cart so the next transaction starts fresh
     cart_clear();
@@ -1252,8 +1248,8 @@ $sales_res = $conn->query("SELECT s.*, e.full_name as cashier FROM sales s LEFT 
 if ($sales_res) {
   while ($sale = $sales_res->fetch_assoc()) {
     $sale['items'] = [];
-    $txn_esc = $conn->real_escape_string($sale['transaction_id']);
-    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.transaction_id='$txn_esc'");
+    $txn_esc = $conn->real_escape_string($sale['order_id']);
+    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.order_id='$txn_esc'");
     if ($items_res) {
       while ($item = $items_res->fetch_assoc()) {
         $sale['items'][] = $item;
@@ -1301,7 +1297,7 @@ if ($page === "reports") {
   $r_rev   = $conn->query("SELECT COALESCE(SUM(total_amount),0) as t FROM sales WHERE $r_where AND status='Completed'")->fetch_assoc()["t"];
   $r_trx   = $conn->query("SELECT COUNT(*) as t FROM sales WHERE $r_where AND status='Completed'")->fetch_assoc()["t"];
   $r_sales = $conn->query("SELECT s.*,e.full_name as cashier FROM sales s LEFT JOIN employees e ON s.employee_id=e.employee_id WHERE $r_where ORDER BY s.sale_date DESC LIMIT 100");
-  $r_top   = $conn->query("SELECT i.product_name,SUM(si.quantity) as cnt,SUM(si.subtotal) as rev FROM sale_items si JOIN inventory i ON si.sku=i.sku JOIN sales s ON si.transaction_id=s.transaction_id WHERE $r_where AND s.status='Completed' GROUP BY si.sku ORDER BY cnt DESC LIMIT 5");
+  $r_top   = $conn->query("SELECT i.product_name,SUM(si.quantity) as cnt,SUM(si.subtotal) as rev FROM sale_items si JOIN inventory i ON si.sku=i.sku JOIN sales s ON si.order_id=s.order_id WHERE $r_where AND s.status='Completed' GROUP BY si.sku ORDER BY cnt DESC LIMIT 5");
     // Determine best selling showcase bundle for the selected period
     $r_best_bundle = '—';
     $bestQ = $conn->query("SELECT COALESCE(sb.name, ss.bundle_name) as name, SUM(ss.quantity) as cnt FROM showcase_sales ss LEFT JOIN showcase_bundles sb ON ss.showcase_id=sb.showcase_id WHERE $r_where GROUP BY ss.showcase_id, ss.bundle_name ORDER BY cnt DESC LIMIT 1");
@@ -1364,11 +1360,14 @@ function validateEmail($email)
   return true;
 }
 
-function generateTransactionRef($employeeId)
+function generateOrderId($conn)
 {
-  $letters = strtoupper(substr(preg_replace("/[^A-Za-z]/", "", $employeeId), 0, 3));
-  $counter  = 1000 + rand(0, 8999); //random 4-digit number starting from 1000
-  return "TXN-" . $letters . $counter;
+  // Order IDs are the user-facing checkout order numbers: #1001, #1002, #1003, ...
+  // The next number is 1001 + (total existing sales rows). This guarantees uniqueness
+  // and keeps the simple sequential format the POS displays at checkout.
+  $row = $conn->query("SELECT COUNT(*) AS n FROM sales")->fetch_assoc();
+  $n   = $row ? (int)$row['n'] : 0;
+  return '#' . (1001 + $n);
 }
 
 function calcSaleTotal($subtotal, $discountAmount = 0)
@@ -6639,7 +6638,7 @@ function factorial(int $n): int
                   const tr = document.createElement('div');
                   tr.style.padding = '12px 0';
                   tr.style.borderBottom = '1px solid #eee';
-                  const orderId = it.transaction_id ? it.transaction_id : 'Unknown';
+                  const orderId = it.order_id ? it.order_id : 'Unknown';
                   const dateText = it.sale_date ? new Date(it.sale_date).toLocaleString() : 'Unknown date';
 
                   const row = document.createElement('div');
@@ -7001,7 +7000,7 @@ function factorial(int $n): int
               <div class="card">
                 <div style="font-size:14px; font-weight:700; color:var(--espresso); margin-bottom:14px;">Sales by Employee</div>
                 <?php
-                $emp_sales = $conn->query("SELECT e.full_name, COUNT(s.transaction_id) as cnt, COALESCE(SUM(s.total_amount),0) as rev
+                $emp_sales = $conn->query("SELECT e.full_name, COUNT(s.order_id) as cnt, COALESCE(SUM(s.total_amount),0) as rev
                                    FROM sales s JOIN employees e ON s.employee_id=e.employee_id
                                    WHERE $r_where AND s.status='Completed'
                                    GROUP BY s.employee_id ORDER BY rev DESC");
@@ -7053,9 +7052,9 @@ function factorial(int $n): int
                   <?php $r_sales_rows = $r_sales ? $r_sales->fetch_all(MYSQLI_ASSOC) : [];
 if (!empty($r_sales_rows)):
   foreach ($r_sales_rows as $s):
-    $sku_esc = $conn->real_escape_string($s['transaction_id']);
+    $sku_esc = $conn->real_escape_string($s['order_id']);
     // Fetch sale items with product names for details view
-    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.transaction_id='$sku_esc'");
+    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.order_id='$sku_esc'");
     $items_array = [];
     if ($items_res) {
       while ($it = $items_res->fetch_assoc()) {
@@ -7065,8 +7064,8 @@ if (!empty($r_sales_rows)):
     // ── Order ID = same value the Checkout page shows: #1000 + nth completed sale of that day
     $sale_day_esc  = $conn->real_escape_string(date('Y-m-d', strtotime($s['sale_date'])));
     $sale_date_esc = $conn->real_escape_string($s['sale_date']);
-    $txn_esc       = $conn->real_escape_string($s['transaction_id']);
-    $pos_row = $conn->query("SELECT COUNT(*) as n FROM sales WHERE DATE(sale_date)='$sale_day_esc' AND status='Completed' AND (sale_date < '$sale_date_esc' OR (sale_date = '$sale_date_esc' AND transaction_id <= '$txn_esc'))")->fetch_assoc();
+    $txn_esc       = $conn->real_escape_string($s['order_id']);
+    $pos_row = $conn->query("SELECT COUNT(*) as n FROM sales WHERE DATE(sale_date)='$sale_day_esc' AND status='Completed' AND (sale_date < '$sale_date_esc' OR (sale_date = '$sale_date_esc' AND order_id <= '$txn_esc'))")->fetch_assoc();
     $order_id_display = '#' . (1000 + (int)($pos_row ? $pos_row['n'] : 1));
     // Prepare details payload including conditional wallet fields (if present in DB)
     $details = $s;
@@ -7136,7 +7135,7 @@ if (!empty($r_sales_rows)):
         // details is an object passed from PHP
         const d = details || {};
         const metaEl = document.getElementById('td_meta');
-        metaEl.textContent = (d.transaction_id ? ('Transaction: ' + d.transaction_id + ' · ') : '') + (d.sale_date ? new Date(d.sale_date).toLocaleString() : '');
+        metaEl.textContent = (d.order_id ? ('Order: ' + d.order_id + ' · ') : '') + (d.sale_date ? new Date(d.sale_date).toLocaleString() : '');
 
         const itemsEl = document.getElementById('td_items');
         itemsEl.innerHTML = '';
