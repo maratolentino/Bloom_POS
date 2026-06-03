@@ -4604,22 +4604,45 @@ function factorial(int $n): int
         renderCart();
       }
 
-      function voidCart() {
-        if (!cart.length) return;
-        showConfirm('Clear current basket?').then(async function(ok) {
-          if (ok) {
-            const srv = await serverCartAction('clear');
-            if (!srv || srv.status !== 'ok') { toast((srv && srv.message) ? srv.message : 'Cannot clear cart', 'red'); return; }
-            cart = [];
-            renderCart();
+      async function voidCart() {
+        try { console.debug('voidCart invoked', { cartLength: cart ? cart.length : undefined }); } catch(e){}
+        if (!cart || !cart.length) { return; }
+
+        // Attempt to clear server cart but do not block UI clearing on failure
+        try {
+          const srv = await serverCartAction('clear');
+          if (!srv || srv.status !== 'ok') {
+            console.warn('Server clear failed', srv);
           }
-        });
+        } catch (e) {
+          console.error('server clear error', e);
+        }
+
+        // Clear client-side cart and persisted state regardless of server result
+        try { cart = []; } catch(e) {}
+        try { setCustomerSelection('', 'Walk-in Customer'); } catch(e){}
+        try { setSelectedBundle({ name: '', main:0, fillers:0, greenery:0 }); } catch(e){}
+        try { localStorage.removeItem('cart_local'); localStorage.removeItem('selected_bundle'); } catch(e){}
+        try { const promo = document.getElementById('promo_select'); if (promo) { promo.value = '0'; } } catch(e){}
+        try { const pin = document.getElementById('points_input'); if (pin) pin.value = 0; updatePointsUI(); } catch(e){}
+
+        // Hide any visible toast/validation messages immediately
+        try {
+          const t = document.getElementById('_toast');
+          if (t) { clearTimeout(t._t); t.style.opacity = '0'; }
+        } catch(e) {}
+
+        renderCart();
+        // Ensure totals are recalculated and bundle validation is reset
+        try { calcTotals(); } catch(e) {}
+        // Informational toast (non-warning)
+        try { toast('Basket cleared'); } catch(e) {}
       }
 
       function holdSale() {
         if (!cart.length) { toast('Nothing to hold', 'amber'); return; }
-        // store cart plus currently selected customer so recall restores both
-        const payload = { cart: cart, customer: getSelectedCustomerValue() };
+        // store cart plus currently selected customer and bundle so recall restores both
+        const payload = { cart: cart, customer: getSelectedCustomerValue(), bundle: SELECTED_BUNDLE };
         const held = JSON.stringify(payload);
         // save locally first
         sessionStorage.setItem('held_cart', held);
@@ -4667,8 +4690,14 @@ function factorial(int $n): int
             const label = opt ? opt.dataset.label : '';
             setCustomerSelection(heldCustomer, label || undefined);
           }
-          // update local cart to heldArr (map to expected shape)
-          cart = heldArr.map(it => ({ sku: it.sku, name: it.name || '', price: parseFloat(it.price || 0), qty: parseInt(it.qty || 0,10), stock: it.stock || 999 }));
+          // update local cart to heldArr (map to expected shape) and restore category if available
+          cart = heldArr.map(it => ({ sku: it.sku, name: it.name || '', price: parseFloat(it.price || 0), qty: parseInt(it.qty || 0,10), stock: it.stock || 999, category: it.category || '' }));
+          // restore selected bundle if present in held payload
+          try {
+            if (heldObj.bundle && heldObj.bundle.name) {
+              setSelectedBundle(heldObj.bundle);
+            }
+          } catch(e) {}
           sessionStorage.removeItem('held_cart');
           renderCart();
           toast('Sale recalled');
