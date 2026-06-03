@@ -1,5 +1,18 @@
 <?php
 if (session_status() !== PHP_SESSION_ACTIVE) {
+    if (!headers_sent()) {
+        // Use the same session name and cookie params as `session.php` so direct requests
+        // (AJAX calls to this file) use the same session.
+        session_name('BLOOMSESSID');
+        session_set_cookie_params([
+            'lifetime' => 0,
+            'path' => '/',
+            'domain' => '',
+            'secure' => false,
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ]);
+    }
     session_start();
 }
 
@@ -264,6 +277,43 @@ if (php_sapi_name() !== 'cli' && isset($_REQUEST['action']) && basename($_SERVER
                 exit;
             }
             echo json_encode(['status' => 'error', 'message' => 'Not logged in']);
+            exit;
+        }
+
+        if ($action === 'get_history') {
+            // Admin-only: return employee basic info and session_history rows as JSON
+            if (!isset($_SESSION['user_role']) || !in_array(strtolower($_SESSION['user_role']), ['admin','owner','manager'], true)) {
+                http_response_code(403);
+                echo json_encode(['status' => 'error', 'message' => 'Forbidden']);
+                exit;
+            }
+
+            $employeeId = isset($_GET['employee_id']) ? strtoupper(trim($_GET['employee_id'])) : '';
+            if ($employeeId === '') {
+                echo json_encode(['status' => 'error', 'message' => 'Missing employee_id']);
+                exit;
+            }
+
+            // fetch employee info
+            $stmt = $conn->prepare('SELECT employee_id, full_name, role, job_role, photo_url FROM employees WHERE employee_id = ? LIMIT 1');
+            $stmt->bind_param('s', $employeeId);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            $employee = $res->fetch_assoc() ?: null;
+            $stmt->close();
+
+            // fetch session rows
+            $stmt = $conn->prepare('SELECT login_date, login_time, logout_time, duration, duration_seconds FROM session_history WHERE employee_id = ? ORDER BY login_time DESC LIMIT 500');
+            $stmt->bind_param('s', $employeeId);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $rows = [];
+            while ($r = $result->fetch_assoc()) {
+                $rows[] = $r;
+            }
+            $stmt->close();
+
+            echo json_encode(['status' => 'ok', 'employee' => $employee, 'sessions' => $rows]);
             exit;
         }
 

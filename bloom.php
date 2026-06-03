@@ -5432,7 +5432,7 @@ function factorial(int $n): int
                           <td><?= htmlspecialchars($loginDate, ENT_QUOTES, 'UTF-8') ?></td>
                           <td><?= htmlspecialchars($loginTime, ENT_QUOTES, 'UTF-8') ?></td>
                           <td><?= $logoutTime ?></td>
-                          <td class="session-duration-cell" data-active="<?= $isActive ? '1' : '0' ?>" data-login="<?= htmlspecialchars($sessionRow['login_time'], ENT_QUOTES, 'UTF-8') ?>" data-prior-duration="<?= isset($sessionRow['duration_seconds']) ? (int)$sessionRow['duration_seconds'] : 0 ?>">
+                          <td class="session-duration-cell" data-active="<?= $isActive ? '1' : '0' ?>" data-login="<?= htmlspecialchars($sessionRow['login_time'], ENT_QUOTES, 'UTF-8') ?>" data-login-ts="<?= intval(strtotime($sessionRow['login_time'])) ?>" data-prior-duration="<?= isset($sessionRow['duration_seconds']) ? (int)$sessionRow['duration_seconds'] : 0 ?>">
                             <?php if ($isActive): ?>
                               <span class="live-session-timer"><?= $durationText ?></span>
                             <?php else: ?>
@@ -5471,20 +5471,19 @@ function factorial(int $n): int
 
               function updateActiveTimer(cell) {
                 if (!cell) return;
-                var loginTime = cell.dataset.login;
+                var loginTs = parseInt(cell.dataset.loginTs || '0', 10);
                 var priorSeconds = parseInt(cell.dataset.priorDuration || '0', 10);
-                if (!loginTime) return;
+                if (!loginTs || loginTs <= 0) return;
 
-                var start = new Date(loginTime.replace(' ', 'T'));
-                if (isNaN(start.getTime())) return;
-
-                var elapsed = Math.floor((Date.now() - start.getTime()) / 1000);
+                var elapsed = Math.floor((Date.now() / 1000) - loginTs);
                 if (elapsed < 0) elapsed = 0;
                 var total = priorSeconds + elapsed;
                 var hours = pad(Math.floor(total / 3600));
                 var mins = pad(Math.floor((total % 3600) / 60));
                 var secs = pad(total % 60);
-                cell.querySelector('.live-session-timer').textContent = hours + ':' + mins + ':' + secs;
+                var timerElem = cell.querySelector('.live-session-timer');
+                if (!timerElem) return;
+                timerElem.textContent = hours + ':' + mins + ':' + secs;
               }
 
               var durationCell = document.querySelector('.session-duration-cell[data-active="1"]');
@@ -6664,18 +6663,18 @@ function factorial(int $n): int
               $sales_today = $conn->query("SELECT COALESCE(SUM(total_amount),0) as t FROM sales WHERE employee_id='{$emp['employee_id']}' AND DATE(sale_date)='$date_today' AND status='Completed'")->fetch_assoc()['t'];
             ?>
               <div class="emp-card">
-                <div class="emp-avatar">
-                  <?php if (!empty($emp['photo_url'])): ?>
-                    <img src="<?= htmlspecialchars($emp['photo_url'], ENT_QUOTES, 'UTF-8') ?>" alt=""
-                      style="width:100%; height:100%; object-fit:cover; border-radius:50%;">
-                  <?php else: ?>
-                    <?= $av ?>
-                  <?php endif; ?>
-                </div>
-                <div style="flex:1;">
-                  <div style="font-size:15px; font-weight:600; color:var(--espresso);">
-                    <?= htmlspecialchars($emp['full_name'], ENT_QUOTES, 'UTF-8') ?>
+                <div class="emp-avatar" style="cursor:pointer;" onclick='openEditEmp(<?= json_encode($emp) ?>)'>
+                    <?php if (!empty($emp['photo_url'])): ?>
+                      <img src="<?= htmlspecialchars($emp['photo_url'], ENT_QUOTES, 'UTF-8') ?>" alt=""
+                        style="width:100%; height:100%; object-fit:cover; border-radius:50%;">
+                    <?php else: ?>
+                      <?= $av ?>
+                    <?php endif; ?>
                   </div>
+                  <div style="flex:1;">
+                    <div style="font-size:15px; font-weight:600; color:var(--espresso); cursor:pointer;" onclick='openEditEmp(<?= json_encode($emp) ?>)'>
+                      <?= htmlspecialchars($emp['full_name'], ENT_QUOTES, 'UTF-8') ?>
+                    </div>
                   <div style="font-size:12px; color:var(--text-3); margin-top:2px;">
                     <?= $emp['employee_id'] ?> &middot; <?= $emp['job_role'] ?>
                   </div>
@@ -6685,7 +6684,7 @@ function factorial(int $n): int
                   <div style="font-size:11px; color:var(--text-3);">Sales today</div>
                 </div>
                 <div style="display:flex; gap:6px; margin-left:12px;">
-                  <button onclick='openEditEmp(<?= json_encode($emp) ?>)' class="btn btn-sm btn-secondary">Edit</button>
+                  <button onclick="openEmployeeHistory('<?= htmlspecialchars($emp['employee_id'], ENT_QUOTES, 'UTF-8') ?>')" class="btn btn-sm btn-secondary">History</button>
                   <button onclick="document.getElementById('reset_emp_id').value='<?= $emp['employee_id'] ?>'; document.getElementById('resetPassModal').classList.add('open');" class="btn btn-sm btn-secondary">Passcode</button>
                   <?php if ($emp['employee_id'] !== $_SESSION['user_id']): ?>
                     <form data-confirm="Remove this employee?" method="POST" action="?page=employees" style="margin:0;">
@@ -6746,6 +6745,128 @@ function factorial(int $n): int
               if (e.target === o) o.classList.remove('open');
             }));
           </script>
+
+            <!-- Employee History Modal -->
+            <div class="overlay" id="employeeHistoryModal">
+              <div class="modal-box" style="max-width:760px; width:100%;">
+                <div class="modal-header">
+                  <span class="modal-title">Employee Session History</span>
+                  <button class="modal-close" onclick="document.getElementById('employeeHistoryModal').classList.remove('open')">&times;</button>
+                </div>
+                <div style="padding:12px 18px;">
+                  <div id="empHistoryHeader" style="margin-bottom:12px; font-weight:700; color:var(--espresso);"></div>
+                  <div class="tbl-wrap">
+                    <table style="width:100%;">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Login Time</th>
+                          <th>Logout Time</th>
+                          <th>Duration</th>
+                        </tr>
+                      </thead>
+                      <tbody id="empHistoryBody">
+                        <tr><td colspan="4" style="text-align:center; color:var(--text-3); padding:18px;">No history yet.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <script>
+              let employeeHistoryTimer = null;
+
+            async function openEmployeeHistory(employeeId) {
+                if (!employeeId) return;
+                const modal = document.getElementById('employeeHistoryModal');
+                const hdr = document.getElementById('empHistoryHeader');
+                const body = document.getElementById('empHistoryBody');
+                hdr.textContent = 'Loading...';
+                body.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:18px;">Loading…</td></tr>';
+                modal.classList.add('open');
+                try {
+                  const resp = await fetch('record.php?action=get_history&employee_id=' + encodeURIComponent(employeeId), { credentials: 'same-origin' });
+                  if (!resp.ok) {
+                    let msg = 'HTTP ' + resp.status;
+                    try { const t = await resp.text(); const pj = JSON.parse(t); if (pj && pj.message) msg = pj.message; } catch(e) {}
+                    throw new Error(msg);
+                  }
+                  const j = await resp.json();
+                  if (!j || j.status !== 'ok') throw new Error(j && j.message ? j.message : 'Failed to fetch');
+                  const emp = j.employee || {};
+                  hdr.textContent = (emp.full_name || employeeId) + ' — ' + (emp.employee_id || '');
+                  const rows = j.sessions || [];
+                  if (!rows.length) {
+                    body.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-3); padding:18px;">No session records.</td></tr>';
+                    clearEmployeeHistoryTimer();
+                    return;
+                  }
+                  body.innerHTML = rows.map(r => {
+                    const loginDate = escapeHtml(r.login_date || '');
+                    const loginTimeText = escapeHtml(formatShortTime(r.login_time));
+                    const durationText = escapeHtml(r.duration || '00:00:00');
+                    let logoutCell = '';
+                    let durationCell = '';
+                    if (r.logout_time) {
+                      logoutCell = escapeHtml(formatShortTime(r.logout_time));
+                      durationCell = `<td class="session-duration-cell" data-active="0">${durationText}</td>`;
+                    } else {
+                      const loginTs = r.login_time ? Math.floor(new Date(r.login_time.replace(' ', 'T')).getTime() / 1000) : 0;
+                      const priorDuration = parseInt(r.duration_seconds || 0, 10) || 0;
+                      logoutCell = '<span style="color:var(--green); font-weight:600;">Active</span>';
+                      durationCell = `<td class="session-duration-cell" data-active="1" data-login-ts="${loginTs}" data-prior-duration="${priorDuration}"><span class="live-session-timer">${durationText}</span></td>`;
+                    }
+                    return `<tr><td>${loginDate}</td><td>${loginTimeText}</td><td>${logoutCell}</td>${durationCell}</tr>`;
+                  }).join('');
+                  updateEmployeeHistoryTimers();
+                } catch (err) {
+                  const msg = err && err.message ? String(err.message) : 'Unknown error';
+                  body.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--red); padding:18px;">${escapeHtml(msg)}</td></tr>`;
+                  hdr.textContent = 'Error: ' + msg;
+                  clearEmployeeHistoryTimer();
+                  console.error('History load error:', err);
+                }
+              }
+
+              function clearEmployeeHistoryTimer() {
+                if (employeeHistoryTimer !== null) {
+                  clearInterval(employeeHistoryTimer);
+                  employeeHistoryTimer = null;
+                }
+              }
+
+              function updateEmployeeHistoryTimers() {
+                const activeCells = document.querySelectorAll('#employeeHistoryModal .session-duration-cell[data-active="1"]');
+                if (!activeCells.length) {
+                  clearEmployeeHistoryTimer();
+                  return;
+                }
+                activeCells.forEach(cell => {
+                  const loginTs = parseInt(cell.dataset.loginTs || '0', 10);
+                  const priorSeconds = parseInt(cell.dataset.priorDuration || '0', 10) || 0;
+                  if (!loginTs || loginTs <= 0) return;
+                  const elapsed = Math.max(0, Math.floor((Date.now() / 1000) - loginTs));
+                  const total = priorSeconds + elapsed;
+                  const hours = String(Math.floor(total / 3600)).padStart(2, '0');
+                  const mins = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+                  const secs = String(total % 60).padStart(2, '0');
+                  const timerElem = cell.querySelector('.live-session-timer');
+                  if (timerElem) {
+                    timerElem.textContent = `${hours}:${mins}:${secs}`;
+                  }
+                });
+                if (employeeHistoryTimer === null) {
+                  employeeHistoryTimer = setInterval(updateEmployeeHistoryTimers, 1000);
+                }
+              }
+
+              function escapeHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+              function formatShortTime(ts) {
+                if (!ts) return '';
+                try { return new Date(ts.replace(' ', 'T')).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); } catch(e) { return ts; }
+              }
+            </script>
 
         <?php
         // ── REPORTS ───────────────────────────────────────────────────
