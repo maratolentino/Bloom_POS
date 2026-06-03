@@ -4747,7 +4747,7 @@ function factorial(int $n): int
         document.getElementById('d_total').innerHTML = fmt(finalTotal);
         document.getElementById('modal_total').innerHTML = fmt(finalTotal);
 
-        document.getElementById('r_sub').innerHTML = fmt(sub);
+        document.getElementById('r_sub').innerHTML = fmt(sub);  
         document.getElementById('r_disc').innerHTML = fmt(disc);
         // Promotion display on receipt: show promotion name as its own row; Discount row shows the deduction amount
         const rPromoRow = document.getElementById('r_promo_row');
