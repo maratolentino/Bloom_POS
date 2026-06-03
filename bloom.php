@@ -16,7 +16,7 @@ $accepted_payments = str_getcsv("Cash,GCash,Maya,Credit/Debit Card", ',', '"', '
 $paymentsRef = &$accepted_payments;
 $paymentKeys = array_keys($accepted_payments);
 $page = isset($_GET["page"]) ? $_GET["page"] : "login";
-
+$hasLogin = strpos($page, 'login'); //strpos returns false if 'login' is not found, or the index (0) if it is found at the start. This variable is used to determine if the current page is the login page or not.
 $loggedIn = isset($_SESSION['user_id']) && $_SESSION['user_id'] !== '';
 if (!$loggedIn && !in_array($page, ['login', 'register'], true)) {
   header('Location: ?page=login');
