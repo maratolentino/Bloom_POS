@@ -3303,6 +3303,15 @@ function factorial(int $n): int
           $showcaseBundles[] = $row;
         }
       }
+      // Determine best-selling showcase bundle (lifetime) and expose to client
+      $bestShowcaseId = null;
+      $bestShowcaseName = '—';
+      $bestQ = $conn->query("SELECT ss.showcase_id, COALESCE(sb.name, ss.bundle_name) AS name, SUM(ss.quantity) AS cnt FROM showcase_sales ss LEFT JOIN showcase_bundles sb ON ss.showcase_id=sb.showcase_id GROUP BY ss.showcase_id, ss.bundle_name ORDER BY cnt DESC LIMIT 1");
+      if ($bestQ && $bestQ->num_rows) {
+        $br = $bestQ->fetch_assoc();
+        if (isset($br['showcase_id']) && $br['showcase_id'] !== null) $bestShowcaseId = (int)$br['showcase_id'];
+        if (!empty($br['name'])) $bestShowcaseName = $br['name'];
+      }
     ?>
     <div class="page">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; gap:16px;">
@@ -3400,8 +3409,10 @@ function factorial(int $n): int
       .showcase-panel { padding: 18px 0; }
       .showcase-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:26px; }
       .showcase-card { position:relative; cursor:pointer; border:1px solid var(--taupe); border-radius:18px; background:var(--white); box-shadow:0 12px 22px rgba(0,0,0,.06); overflow:hidden; }
-      .showcase-delete-btn { position:absolute; top:12px; right:12px; width:32px; height:32px; border:none; border-radius:50%; background:rgba(255,255,255,.92); color:var(--espresso); font-size:18px; line-height:1; cursor:pointer; opacity:0; transition:opacity .2s ease, transform .2s ease; }
+      .showcase-delete-btn { position:absolute; top:12px; left:12px; width:32px; height:32px; border:none; border-radius:50%; background:rgba(255,255,255,.92); color:var(--espresso); font-size:18px; line-height:1; cursor:pointer; opacity:0; transition:opacity .2s ease, transform .2s ease; z-index:9; }
       .showcase-card:hover .showcase-delete-btn { opacity:1; transform:translateY(-1px); }
+      .best-sash { position:absolute; top:12px; right:12px; display:inline-flex; align-items:center; gap:8px; background:linear-gradient(90deg,#ff7fb3 0%,#ffb6d5 100%); color:#fff; font-weight:800; font-size:12px; padding:6px 10px; box-shadow:0 6px 18px rgba(0,0,0,.12); z-index:12; letter-spacing:.04em; text-transform:uppercase; border-radius:999px; border:1px solid rgba(255,255,255,0.12); }
+      @media(max-width:760px) { .best-sash { right:10px; font-size:11px; padding:5px 8px; } }
       .showcase-image { height:180px; background:linear-gradient(145deg, #ffd9e8 0%, #f1e4ff 100%); display:flex; align-items:center; justify-content:center; }
       .showcase-image-inner { text-align:center; font-size:13px; color:var(--text-3); padding:16px; }
       .showcase-card-body { padding:14px; }
@@ -3437,6 +3448,8 @@ function factorial(int $n): int
     <script>
       const SHOWCASE_BUNDLES = <?= json_encode($showcaseBundles, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       const allProducts = <?= json_encode($inventory, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+      const BEST_SHOWCASE_ID = <?= json_encode($bestShowcaseId, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+      const BEST_SHOWCASE_NAME = <?= json_encode($bestShowcaseName, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       // Normalize server-side keys to friendly JS names (image_url -> imageUrl)
       (function(){
         for (let i = 0; i < SHOWCASE_BUNDLES.length; i++) {
@@ -3623,6 +3636,17 @@ function factorial(int $n): int
         meta.textContent = bundle.meta;
         body.appendChild(title);
         body.appendChild(meta);
+
+        // Render best-selling sash if this bundle matches the computed best seller
+        try {
+          const isBest = (typeof BEST_SHOWCASE_ID !== 'undefined' && BEST_SHOWCASE_ID !== null && bundle.showcase_id && String(bundle.showcase_id) === String(BEST_SHOWCASE_ID)) || (typeof BEST_SHOWCASE_NAME !== 'undefined' && bundle.name && bundle.name === BEST_SHOWCASE_NAME);
+          if (isBest) {
+            const sash = document.createElement('div');
+            sash.className = 'best-sash';
+            sash.textContent = 'Best Seller';
+            card.appendChild(sash);
+          }
+        } catch(e) { console.warn('Best sash render error', e); }
 
         if (SHOWCASE_IS_ADMIN) {
           const deleteBtn = document.createElement('button');
