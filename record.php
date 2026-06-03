@@ -62,11 +62,54 @@ function getTodaySession(mysqli $conn, string $employeeId): ?array {
     return $row ?: null;
 }
 
+function closeDanglingSessions(mysqli $conn, string $employeeId): void {
+    $employeeId = strtoupper(trim($employeeId));
+    if ($employeeId === '') {
+        return;
+    }
+
+    $today = date('Y-m-d');
+    $stmt = $conn->prepare(
+        'SELECT session_id, login_time, login_date FROM session_history WHERE employee_id = ? AND logout_time IS NULL AND login_date < ? ORDER BY login_time ASC'
+    );
+    $stmt->bind_param('ss', $employeeId, $today);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $openRows = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    if (!$openRows) {
+        return;
+    }
+
+    $updateStmt = $conn->prepare(
+        'UPDATE session_history SET logout_time = ?, duration_seconds = ?, duration = ? WHERE session_id = ?'
+    );
+
+    foreach ($openRows as $row) {
+        $loginTimestamp = strtotime($row['login_time']);
+        $dayEndTimestamp = strtotime($row['login_date'] . ' 23:59:59');
+        $fallbackLogoutTimestamp = min($loginTimestamp + 8 * 3600, $dayEndTimestamp);
+        $fallbackLogoutTimestamp = max($fallbackLogoutTimestamp, $loginTimestamp);
+
+        $logoutTime = date('Y-m-d H:i:s', $fallbackLogoutTimestamp);
+        $durationSeconds = $fallbackLogoutTimestamp - $loginTimestamp;
+        $duration = formatDuration($durationSeconds);
+
+        $updateStmt->bind_param('sisi', $logoutTime, $durationSeconds, $duration, $row['session_id']);
+        $updateStmt->execute();
+    }
+
+    $updateStmt->close();
+}
+
 function recordLogin(mysqli $conn, string $employeeId): ?int {
     $employeeId = strtoupper(trim($employeeId));
     if ($employeeId === '') {
         return null;
     }
+
+    closeDanglingSessions($conn, $employeeId);
 
     $loginTime = date('Y-m-d H:i:s');
     $loginDate = date('Y-m-d', strtotime($loginTime));

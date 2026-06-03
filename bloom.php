@@ -17,6 +17,12 @@ $paymentsRef = &$accepted_payments;
 $paymentKeys = array_keys($accepted_payments);
 $page = isset($_GET["page"]) ? $_GET["page"] : "login";
 
+$loggedIn = isset($_SESSION['user_id']) && $_SESSION['user_id'] !== '';
+if (!$loggedIn && !in_array($page, ['login', 'register'], true)) {
+  header('Location: ?page=login');
+  exit;
+}
+
 // Database connection
 // Defensive: ensure mysqli extension is present to avoid fatal errors in environments
 // where the CLI PHP binary lacks mysqli (e.g., some lightweight installs).
@@ -5345,8 +5351,8 @@ function factorial(int $n): int
               <?php endif; ?>
             </div>
             <div class="sb-user-info">
-              <div class="sb-user-name"><?= htmlspecialchars(isset($_SESSION['user_name']) ? $_SESSION['user_name'] : 'Guest', ENT_QUOTES, 'UTF-8') ?></div>
-              <div class="sb-user-role"><?= htmlspecialchars(isset($_SESSION['user_role']) ? $_SESSION['user_role'] : 'Guest', ENT_QUOTES, 'UTF-8') ?> &middot; <?= htmlspecialchars(isset($_SESSION['user_id']) ? $_SESSION['user_id'] : '', ENT_QUOTES, 'UTF-8') ?></div>
+              <div class="sb-user-name"><?= htmlspecialchars(isset($_SESSION['user_name']) ? $_SESSION['user_name'] : '', ENT_QUOTES, 'UTF-8') ?></div>
+              <div class="sb-user-role"><?= htmlspecialchars(isset($_SESSION['user_role']) ? $_SESSION['user_role'] : '', ENT_QUOTES, 'UTF-8') ?> &middot; <?= htmlspecialchars(isset($_SESSION['user_id']) ? $_SESSION['user_id'] : '', ENT_QUOTES, 'UTF-8') ?></div>
             </div>
           </div>
           <a href="?page=logout" class="sb-logout">Sign Out</a>
@@ -5368,9 +5374,9 @@ function factorial(int $n): int
                 <?php endif; ?>
               </div>
               <div style="min-width:0;">
-                <div style="font-size:16px; font-weight:700; color:var(--espresso);"><?= htmlspecialchars(isset($_SESSION['user_name']) ? $_SESSION['user_name'] : 'Guest', ENT_QUOTES, 'UTF-8') ?></div>
+                <div style="font-size:16px; font-weight:700; color:var(--espresso);"><?= htmlspecialchars(isset($_SESSION['user_name']) ? $_SESSION['user_name'] : '', ENT_QUOTES, 'UTF-8') ?></div>
                 <div style="font-size:12px; color:var(--text-3); margin-top:3px;">
-                  <?= htmlspecialchars(isset($_SESSION['user_id']) ? $_SESSION['user_id'] : '', ENT_QUOTES, 'UTF-8') ?> &middot; <?= htmlspecialchars(isset($_SESSION['user_role']) ? $_SESSION['user_role'] : 'Guest', ENT_QUOTES, 'UTF-8') ?>
+                  <?= htmlspecialchars(isset($_SESSION['user_id']) ? $_SESSION['user_id'] : '', ENT_QUOTES, 'UTF-8') ?> &middot; <?= htmlspecialchars(isset($_SESSION['user_role']) ? $_SESSION['user_role'] : '', ENT_QUOTES, 'UTF-8') ?>
                 </div>
               </div>
             </div>
@@ -5501,7 +5507,7 @@ function factorial(int $n): int
             <div class="page-header">
               <div>
                 <div class="page-title">Dashboard</div>
-                <div class="page-sub"><?php echo date('l, d F Y'); ?> &middot; <?php echo isset($_SESSION['user_role']) ? htmlspecialchars($_SESSION['user_role'], ENT_QUOTES, 'UTF-8') : 'Guest'; ?> view</div>
+                <div class="page-sub"><?php echo date('l, d F Y'); ?> &middot; <?php echo isset($_SESSION['user_role']) ? htmlspecialchars($_SESSION['user_role'], ENT_QUOTES, 'UTF-8') : ''; ?> view</div>
               </div>
             </div>
 
