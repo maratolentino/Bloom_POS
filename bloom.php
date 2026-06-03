@@ -1710,6 +1710,18 @@ function factorial(int $n): int
       transform: translateY(-2px);
     }
 
+    .report-stats {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) 1.7fr;
+    }
+
+    .report-stats .stat-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+
     .stat-label {
       font-size: 11.5px;
       color: var(--text-3);
@@ -1720,7 +1732,7 @@ function factorial(int $n): int
     }
 
     .stat-value {
-      font-size: 30px;
+      font-size: 25px;
       font-weight: 800;
       letter-spacing: -.6px;
       color: var(--espresso);
@@ -6909,7 +6921,7 @@ function factorial(int $n): int
               <a href="?page=reports&period=month" class="period-btn <?= $report_period === 'month' ? 'active' : '' ?>">Last 30 Days</a>
             </div>
 
-            <div class="stat-grid" style="margin-bottom:24px;">
+            <div class="stat-grid report-stats" style="margin-bottom:24px;">
               <div class="stat-card">
                 <div class="stat-label">Total Revenue</div>
                 <div class="stat-value" style="color:var(--green);">&#8369;<?= number_format($r_rev, 2) ?></div>
