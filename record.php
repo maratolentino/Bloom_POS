@@ -1,4 +1,6 @@
 <?php
+
+// AJAX is used to call functions in this file from the frontend.
 if (session_status() !== PHP_SESSION_ACTIVE) {
     if (!headers_sent()) {
         // Use the same session name and cookie params as `session.php` so direct requests
@@ -17,49 +19,60 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 
 // Database connection details. Replace these values if your environment differs.
-define('DB_HOST', '127.0.0.1');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_NAME', 'bloom_pos');
+define('DB_HOST', '127.0.0.1'); //127.0.0.1 is for XAMPP on Windows
+define('DB_USER', 'root'); // root is the default user for XAMPP
+define('DB_PASS', ''); // empty password
+define('DB_NAME', 'bloom_pos'); // Database name
 
-function dbConnect(): mysqli {
+// Connect to the database and return the connection object.
+function dbConnect(): mysqli
+{
     $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
     if ($conn->connect_error) {
         throw new RuntimeException('Database connection failed: ' . $conn->connect_error);
     }
-    $conn->set_charset('utf8mb4');
+    $conn->set_charset('utf8mb4'); // Ensure UTF-8 encoding for proper character support
     return $conn;
 }
 
-function formatDuration(int $seconds): string {
+// Format a duration in seconds to HH:MM:SS format, this is used on the frontend to display session durations
+function formatDuration(int $seconds): string
+{
     $hours = floor($seconds / 3600);
     $minutes = floor(($seconds % 3600) / 60);
     $secs = $seconds % 60;
     return sprintf('%02d:%02d:%02d', $hours, $minutes, $secs);
 }
 
-function createSessionHistoryTableSql(): string {
+// Create the session_history table if it doesn't exist. This table stores login/logout records for employees.
+function createSessionHistoryTableSql(): string
+{
     return <<<SQL
 CREATE TABLE IF NOT EXISTS session_history (
     session_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  employee_id VARCHAR(50) NOT NULL,
-  login_date DATE NOT NULL,
-  login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  logout_time DATETIME NULL DEFAULT NULL,
-  duration_seconds INT NULL DEFAULT NULL,
-  duration VARCHAR(16) NULL DEFAULT NULL,
-  INDEX idx_employee_active (employee_id, logout_time),
-  INDEX idx_employee_login (employee_id, login_time),
-  CONSTRAINT fk_session_history_employee FOREIGN KEY (employee_id) REFERENCES employees(employee_id) ON UPDATE CASCADE ON DELETE RESTRICT
+    employee_id VARCHAR(50) NOT NULL,
+    login_date DATE NOT NULL,
+    login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    logout_time DATETIME NULL DEFAULT NULL,
+    duration_seconds INT NULL DEFAULT NULL,
+    duration VARCHAR(16) NULL DEFAULT NULL,
+    INDEX idx_employee_active (employee_id, logout_time),
+    INDEX idx_employee_login (employee_id, login_time),
+    CONSTRAINT fk_session_history_employee FOREIGN KEY (employee_id) REFERENCES employees(employee_id) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 SQL;
 }
 
-function ensureSessionHistoryTable(mysqli $conn): void {
+// Ensure the session_history table exists before any operations. This is called at the start of AJAX requests to this file.
+function ensureSessionHistoryTable(mysqli $conn): void
+{
     $conn->query(createSessionHistoryTableSql());
 }
 
-function getTodaySession(mysqli $conn, string $employeeId): ?array {
+// Get today's session for an employee, if it exists. 
+// This is used to check if the employee has already logged in today and to handle same-day re-logins.
+function getTodaySession(mysqli $conn, string $employeeId): ?array
+{
     $employeeId = strtoupper(trim($employeeId));
     $today = date('Y-m-d');
 
@@ -75,7 +88,10 @@ function getTodaySession(mysqli $conn, string $employeeId): ?array {
     return $row ?: null;
 }
 
-function closeDanglingSessions(mysqli $conn, string $employeeId): void {
+// Close any hanging sessions for an employee that were left open from previous days. 
+// This is called at login to ensure that old sessions are properly closed and don't interfere with today's session.
+function closeDanglingSessions(mysqli $conn, string $employeeId): void
+{
     $employeeId = strtoupper(trim($employeeId));
     if ($employeeId === '') {
         return;
@@ -116,7 +132,10 @@ function closeDanglingSessions(mysqli $conn, string $employeeId): void {
     $updateStmt->close();
 }
 
-function recordLogin(mysqli $conn, string $employeeId): ?int {
+// Record a login for an employee. 
+// This function handles both new logins and same-day re-logins by updating or creating session_history records accordingly.
+function recordLogin(mysqli $conn, string $employeeId): ?int
+{
     $employeeId = strtoupper(trim($employeeId));
     if ($employeeId === '') {
         return null;
@@ -147,6 +166,7 @@ function recordLogin(mysqli $conn, string $employeeId): ?int {
         return (int)$todaySession['session_id'];
     }
 
+    // No session today yet: create a new row.
     $stmt = $conn->prepare(
         'INSERT INTO session_history (employee_id, login_date, login_time, duration_seconds, duration) VALUES (?, ?, ?, 0, "00:00:00")'
     );
@@ -159,7 +179,10 @@ function recordLogin(mysqli $conn, string $employeeId): ?int {
     return $sessionId;
 }
 
-function recordLogout(mysqli $conn, string $employeeId, ?int $historyId = null): bool {
+// Record a logout for an employee. 
+// This function finds the active session for the employee (optionally using a provided history ID) and updates it with the logout time and calculated duration.
+function recordLogout(mysqli $conn, string $employeeId, ?int $historyId = null): bool
+{
     $employeeId = strtoupper(trim($employeeId));
     if ($employeeId === '') {
         return false;
@@ -177,6 +200,7 @@ function recordLogout(mysqli $conn, string $employeeId, ?int $historyId = null):
         $stmt->bind_param('s', $employeeId);
     }
 
+    // Execute the query to find the active session for the employee. If no active session is found, return false.
     $stmt->execute();
     $result = $stmt->get_result();
     $sessionRow = $result->fetch_assoc();
@@ -203,7 +227,10 @@ function recordLogout(mysqli $conn, string $employeeId, ?int $historyId = null):
     return $success;
 }
 
-function getSessionHistory(mysqli $conn, string $employeeId, int $limit = 20): array {
+// Get session history for an employee, limited to a certain number of recent records. 
+// This is used on the frontend to display the employee's login/logout history.
+function getSessionHistory(mysqli $conn, string $employeeId, int $limit = 20): array
+{
     $employeeId = strtoupper(trim($employeeId));
     if ($employeeId === '') {
         return [];
@@ -211,10 +238,10 @@ function getSessionHistory(mysqli $conn, string $employeeId, int $limit = 20): a
 
     $stmt = $conn->prepare(
         'SELECT session_id, login_date, login_time, logout_time, duration, duration_seconds
-         FROM session_history
-         WHERE employee_id = ?
-         ORDER BY login_time DESC
-         LIMIT ?'
+        FROM session_history
+        WHERE employee_id = ?
+        ORDER BY login_time DESC
+        LIMIT ?'
     );
     $stmt->bind_param('si', $employeeId, $limit);
     $stmt->execute();
@@ -225,7 +252,10 @@ function getSessionHistory(mysqli $conn, string $employeeId, int $limit = 20): a
     return $rows;
 }
 
-function getActiveSessionHistory(mysqli $conn, string $employeeId): ?array {
+// Get the active session for an employee, if it exists. 
+// This is used to check if the employee currently has an open session (logged in but not logged out).
+function getActiveSessionHistory(mysqli $conn, string $employeeId): ?array
+{
     $employeeId = strtoupper(trim($employeeId));
     if ($employeeId === '') {
         return null;
@@ -233,10 +263,10 @@ function getActiveSessionHistory(mysqli $conn, string $employeeId): ?array {
 
     $stmt = $conn->prepare(
         'SELECT session_id, login_time, logout_time, duration, duration_seconds
-         FROM session_history
-         WHERE employee_id = ? AND logout_time IS NULL
-         ORDER BY login_time DESC
-         LIMIT 1'
+        FROM session_history
+        WHERE employee_id = ? AND logout_time IS NULL
+        ORDER BY login_time DESC
+        LIMIT 1'
     );
     $stmt->bind_param('s', $employeeId);
     $stmt->execute();
@@ -247,12 +277,16 @@ function getActiveSessionHistory(mysqli $conn, string $employeeId): ?array {
     return $row ?: null;
 }
 
-function getActiveSessionHistoryId(): ?int {
+// Get the active session history ID from the session, if it exists. 
+// This is used to track the current session across requests.
+function getActiveSessionHistoryId(): ?int
+{
     return isset($_SESSION['session_history_id']) && is_numeric($_SESSION['session_history_id'])
         ? (int)$_SESSION['session_history_id']
         : null;
 }
 
+// Handle AJAX requests to this file. The 'action' parameter determines which operation to perform (login, logout, get_history).
 if (php_sapi_name() !== 'cli' && isset($_REQUEST['action']) && basename($_SERVER['SCRIPT_NAME'] ?? '') === basename(__FILE__)) {
     try {
         $conn = dbConnect();
@@ -282,7 +316,7 @@ if (php_sapi_name() !== 'cli' && isset($_REQUEST['action']) && basename($_SERVER
 
         if ($action === 'get_history') {
             // Admin-only: return employee basic info and session_history rows as JSON
-            if (!isset($_SESSION['user_role']) || !in_array(strtolower($_SESSION['user_role']), ['admin','owner','manager'], true)) {
+            if (!isset($_SESSION['user_role']) || !in_array(strtolower($_SESSION['user_role']), ['admin', 'owner', 'manager'], true)) {
                 http_response_code(403);
                 echo json_encode(['status' => 'error', 'message' => 'Forbidden']);
                 exit;

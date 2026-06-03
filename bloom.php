@@ -36,6 +36,7 @@ if (!class_exists('mysqli')) {
   }
 }
 
+// Connect to the database. If connection fails, return JSON error for AJAX or die with message for normal page loads.
 $conn = new mysqli('127.0.0.1', 'root', '', 'bloom_pos');
 if ($conn->connect_error) {
   header('Content-Type: application/json');
@@ -76,9 +77,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
         $stmt->close();
       }
 
-      
-
-      
+      // If SKU is invalid (not found in inventory), return error.
+      // If adding the quantity would exceed stock, return error. Otherwise, add to cart and return updated cart info.
       if ($stockQty === null) {
         http_response_code(400);
         echo json_encode(['status'=>'error','message'=>'Invalid product SKU']);
@@ -94,6 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
       echo json_encode(['status'=>'ok','cart'=>cart_get(),'count'=>cart_count_items()]);
       exit;
     }
+    // Set and Remove actions use cart_set and cart_remove which already handle stock checks and quantity logic, so we just call them directly with the provided SKU and quantity.
     if ($act === 'set') {
       $sku = isset($_POST['sku']) ? $_POST['sku'] : '';
       $qty = isset($_POST['qty']) ? (int)$_POST['qty'] : 0;
@@ -106,6 +107,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
         $stmt->fetch();
         $stmt->close();
       }
+      // If SKU is invalid (not found in inventory), return error. 
+      // If setting the quantity would exceed stock, return error. 
       if ($stockQty === null) {
         http_response_code(400);
         echo json_encode(['status'=>'error','message'=>'Invalid product SKU']);
@@ -121,6 +124,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
       echo json_encode(['status'=>'ok','cart'=>cart_get(),'count'=>cart_count_items()]);
       exit;
     }
+    // Remove action will call cart_remove which handles the logic of unsetting the SKU from the cart if it exists. 
+    // Clear action will call cart_clear which unsets the entire cart. 
     if ($act === 'remove') {
       $sku = isset($_POST['sku']) ? $_POST['sku'] : '';
       cart_remove($sku);
@@ -140,6 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
     exit;
   }
 }
+// Cart retrieval endpoint for GET requests. Returns the current cart contents and item count as JSON.
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_cart'])) {
   header('Content-Type: application/json');
   header('X-Session-Id: ' . session_id());
@@ -147,6 +153,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_cart'])) {
   exit;
 }
 
+// Utility function to generate the next product SKU in the format PR-###. 
+// It queries the inventory for existing SKUs, extracts the numeric part, finds the maximum, and increments it to create the next SKU.
 function getNextProductSku(mysqli $conn): string {
   $nextSku = 'PR-001';
   $result = $conn->query("SELECT MAX(CAST(SUBSTRING(sku, 4) AS UNSIGNED)) AS max_num FROM inventory WHERE sku REGEXP '^PR-[0-9]{3}$'");
@@ -159,6 +167,8 @@ function getNextProductSku(mysqli $conn): string {
   return $nextSku;
 }
 
+// AJAX endpoint to retrieve showcase bundles. 
+// Returns a JSON array of showcase items with their details. This is used on the frontend to display the available showcase bundles for customers to choose from.
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_showcase'])) {
   header('Content-Type: application/json');
   $items = [];
@@ -172,14 +182,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_showcase'])) {
   exit;
 }
 
+// AJAX endpoint to get the next product SKU. 
+// This is used when adding new products to the inventory to automatically suggest the next available SKU in the sequence.
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_next_sku'])) {
   header('Content-Type: application/json');
   echo json_encode(['status' => 'ok', 'next_sku' => getNextProductSku($conn)]);
   exit;
 }
 
+// AJAX endpoints for cart management (add, set, remove, clear) are handled at the top of this file to ensure they execute before any page output. 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_showcase') {
   header('Content-Type: application/json');
+  // Only allows admin to add showcase bundles
   if (empty($is_admin)) {
     echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
     exit;
@@ -192,6 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
   $meta = isset($_POST['meta']) ? trim($_POST['meta']) : '';
   $image_url = null;
 
+  // Handle image upload if a file is provided. If an image URL is provided instead, use that.
   if (isset($_FILES['image_file']) && $_FILES['image_file']['error'] !== UPLOAD_ERR_NO_FILE) {
     if ($_FILES['image_file']['error'] === UPLOAD_ERR_OK) {
       $uploadDir = 'uploads/showcase/';
@@ -212,6 +227,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $image_url = trim($_POST['image_url']);
   }
 
+  // Insert the new showcase bundle into the database and return the created item as JSON. 
+  // This allows the frontend to immediately display the new bundle without needing to refresh the page.
   $stmt = $conn->prepare("INSERT INTO showcase_bundles (name, description, main, fillers, greenery, meta, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)");
   $stmt->bind_param('ssiiiss', $name, $description, $main, $fillers, $greenery, $meta, $image_url);
   if ($stmt->execute()) {
@@ -224,6 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
   exit;
 }
 
+// AJAX endpoint to delete a showcase bundle.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_showcase') {
   header('Content-Type: application/json');
   if (empty($is_admin)) {
@@ -262,6 +280,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
   }
   
+  // If discount_id is null, we want to remove the discount assignment from the product. 
+  // Otherwise, we want to assign the specified discount_id to the product. 
   try {
     if ($discount_id === null) {
       $stmt = $conn->prepare("UPDATE inventory SET discount_id = NULL WHERE sku = ?");
@@ -330,6 +350,7 @@ $colCheck = $conn->query("SHOW COLUMNS FROM customers LIKE 'member_since'");
 if ($colCheck && $colCheck->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN member_since DATETIME NULL DEFAULT NULL");
 }
+
 // Ensure `contact_email` and `contact_number` columns exist on `customers`
 $colCheckEmail = $conn->query("SHOW COLUMNS FROM customers LIKE 'contact_email'");
 if ($colCheckEmail && $colCheckEmail->num_rows === 0) {
@@ -339,24 +360,32 @@ $colCheckPhone = $conn->query("SHOW COLUMNS FROM customers LIKE 'contact_number'
 if ($colCheckPhone && $colCheckPhone->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN contact_number VARCHAR(32) NULL DEFAULT NULL");
 }
+
 // Ensure `approved` column exists on `customers` (1 = approved, 0 = pending)
 $colCheckApproved = $conn->query("SHOW COLUMNS FROM customers LIKE 'approved'");
 if ($colCheckApproved && $colCheckApproved->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN approved TINYINT(1) NOT NULL DEFAULT 1");
 }
+
 // Ensure `created_by`, `approved_by`, `approved_at`, and `rejection_reason` columns exist
 $colCheckCreatedBy = $conn->query("SHOW COLUMNS FROM customers LIKE 'created_by'");
 if ($colCheckCreatedBy && $colCheckCreatedBy->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN created_by VARCHAR(50) NULL DEFAULT NULL");
 }
+
+// Ensure `approved_by`, `approved_at`, and `rejection_reason` columns exist to support approval workflow for customer accounts.
 $colCheckApprovedBy = $conn->query("SHOW COLUMNS FROM customers LIKE 'approved_by'");
 if ($colCheckApprovedBy && $colCheckApprovedBy->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN approved_by VARCHAR(50) NULL DEFAULT NULL");
 }
+
+// Ensure `approved_by`, `approved_at`, and `rejection_reason` columns exist to support approval workflow for customer accounts.
 $colCheckApprovedAt = $conn->query("SHOW COLUMNS FROM customers LIKE 'approved_at'");
 if ($colCheckApprovedAt && $colCheckApprovedAt->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN approved_at DATETIME NULL DEFAULT NULL");
 }
+
+// Ensure `rejection_reason` column exists to support recording the reason for rejecting a customer account during the approval process.
 $colCheckRej = $conn->query("SHOW COLUMNS FROM customers LIKE 'rejection_reason'");
 if ($colCheckRej && $colCheckRej->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN rejection_reason VARCHAR(255) NULL DEFAULT NULL");
@@ -425,6 +454,7 @@ if ($page === "login" && $_SERVER["REQUEST_METHOD"] === "POST") {
     }
   }
 
+  // Handle "Remember Me" cookie: if the user checked the box, set a cookie with their employee ID for 30 days. If they didn't check it, delete any existing cookie.
   if (isset($_POST['remember_me'])) {
     setcookie('bloom_remember_id', $emp_id, time() + (30 * 24 * 60 * 60), '/'); // 30 days
   } else {
@@ -434,6 +464,8 @@ if ($page === "login" && $_SERVER["REQUEST_METHOD"] === "POST") {
 
 // ── Register ──────────────────────────────────────────────────
 
+// Only allow registration if the logged-in user is an admin. 
+// New accounts can only be created with the "Cashier" role; admin account creation via form is disabled to prevent privilege escalation. Employee ID must follow strict format: EMP-### with uppercase 'EMP' prefix and numeric part from 001 to 999. Name is validated for allowed characters and length. If validation passes, the new employee is inserted into the database. Optional profile photo upload is supported, and the photo URL is stored in the database if provided.
 if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && $is_admin) {
   $emp_id   = isset($_POST["emp_id"])    ? trim($_POST["emp_id"])    : "";
   $name     = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : "";
@@ -441,6 +473,7 @@ if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && $is_admin) 
   $passcode = isset($_POST["passcode"])  ? $_POST["passcode"]        : "";
   $job_role = (strcasecmp($role, "Admin") === 0) ? "Manager" : "Cashier"; // strcasecmp() for case-insensitive role check
 
+  // Validate name using the same function as profile updates to ensure consistent validation rules (characters and length). 
   $nameCheck = validateStaffName($name);
   if (!is_bool($nameCheck) || $nameCheck !== true) {
     $reg_error = is_bool($nameCheck) ? "Invalid name." : $nameCheck;
@@ -463,6 +496,7 @@ if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && $is_admin) 
     }
   }
 
+  // If there are no validation errors, proceed to insert the new employee into the database.
   if ($reg_error === "") {
     // ── NEW: profile photo upload ──
     $photo_path = "";
@@ -473,6 +507,8 @@ if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && $is_admin) 
       move_uploaded_file($_FILES["emp_photo"]["tmp_name"], $photo_path);
     }
 
+    // Use prepared statement to safely insert the new employee record into the database. 
+    // The employee ID, name, role, passcode, job role, and photo URL are all stored in the employees table.
     $stmt = $conn->prepare("INSERT INTO employees (employee_id, full_name, role, passcode, job_role, photo_url) VALUES (?,?,?,?,?,?)");
     $stmt->bind_param("ssssss", $emp_id, $name, $role, $passcode, $job_role, $photo_path);
     //                 ^^^^^^ 6 s's — one per ? placeholder
@@ -510,6 +546,7 @@ if (isset($_POST["update_my_profile"])) {
 
   $updates = [];
 
+  // Validates user name
   $nameCheck = validateStaffName($name);
   if (is_bool($nameCheck) && $nameCheck === true) {
     $name_esc  = $conn->real_escape_string($name);
@@ -517,11 +554,13 @@ if (isset($_POST["update_my_profile"])) {
     $_SESSION["user_name"] = $name;
   }
 
+  // Validates user passcode
   if ($new_passcode !== "") {
     $pc_esc    = $conn->real_escape_string($new_passcode);
     $updates[] = "passcode='$pc_esc'";
   }
 
+  // Validated user avatar/profile picture
   if (isset($_FILES["profile_photo"]) && $_FILES["profile_photo"]["error"] === 0) {
     $dir = "uploads/";
     if (!is_dir($dir)) mkdir($dir, 0777, true);
@@ -533,6 +572,7 @@ if (isset($_POST["update_my_profile"])) {
     }
   }
 
+  // Updates SQL when code is modified
   if (!empty($updates)) {
     $id_esc = $conn->real_escape_string($id);
     $conn->query("UPDATE employees SET " . implode(",", $updates) . " WHERE employee_id='$id_esc'");
@@ -542,6 +582,7 @@ if (isset($_POST["update_my_profile"])) {
   exit;
 }
 
+// Finalize sale when checkout form is submitted.
 if ($page === "checkout" && isset($_POST["finalize_sale"])) {
   $cart_data       = json_decode(isset($_POST["cart_json"])       ? $_POST["cart_json"]       : "[]",   true);
   $payment_method  = $conn->real_escape_string(isset($_POST["payment_method"])  ? $_POST["payment_method"]  : "Cash");
@@ -591,6 +632,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     }
 
     // Server-side validation for wallet reference formats
+    // GCASH: require exactly 13 digits (numbers only)
     if ($payment_method === 'GCash') {
       if (!preg_match('/^[0-9]{13}$/', $wallet_contact)) {
         $msg = 'GCash Reference Number must be exactly 13 digits (numbers only).';
@@ -610,7 +652,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
       }
     }
     // Server-side validation for wallet account name (letters and spaces only, allow ñ/Ñ)
-    if (!preg_match('/^[a-zA-ZñÑ ]+$/', $wallet_account)) {
+    if (!preg_match('/^[a-zA-ZñÑ ]+$/', $wallet_account)) { // preg_match is used to validate that the wallet account name contains only letters (including ñ/Ñ) and spaces.
       $msg = 'Account Name must contain letters and spaces only.';
       if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>$msg]); exit; }
       $_SESSION['payment_error'] = $msg;
@@ -619,6 +661,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     }
   }
 
+  // Calculate cart subtotal
   $cart_subtotal = 0;
   for ($i = 0; $i < count($cart_data); $i++) {
     $cart_subtotal += $cart_data[$i]["price"] * $cart_data[$i]["qty"];
@@ -637,11 +680,12 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
   $promotion_name = (isset($_POST["promotion_name"]) && $_POST["promotion_name"] !== "") ? $conn->real_escape_string($_POST["promotion_name"]) : null;
   $promotion_type = (isset($_POST["promotion_type"]) && $_POST["promotion_type"] !== "") ? $conn->real_escape_string($_POST["promotion_type"]) : null;
 
+  // Insert the sale record into the database, including wallet payment details if applicable.
   if ($hasWalletCols) {
     $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
     if ($stmt) {
       $stmt->bind_param("ssdddsdsssisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
-    }
+    } // ssdddsdsssisssi = string, string, double, double, double, string, double, string, string, string, int, string, string, int, int
   } else {
     $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
     if ($stmt) {
@@ -649,6 +693,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     }
   }
 
+    // After inserting the sale, we loop through each item in the cart and insert it into the sale_items table.
     if ($stmt && $stmt->execute()) {
     foreach ($cart_data as $item) {
       $sku   = $conn->real_escape_string($item["sku"]);
@@ -693,6 +738,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
         if ($p->fetch()) $showcase_id = (int)$sid;
         $p->close();
       }
+      // For matching showcase bundle, we include the showcase_id for better tracking
       if ($showcase_id !== null) {
         $ins = $conn->prepare("INSERT INTO showcase_sales (order_id, showcase_id, bundle_name, quantity, sale_date, employee_id) VALUES (?,?,?,?,?,?)");
         if ($ins) {
@@ -727,22 +773,24 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
   }
 }
 
-
-
 // ── Inventory CRUD ────────────────────────────────────────────
 if ($page === "inventory" && isset($_SESSION["user_role"]) && $_SESSION["user_role"] === "Admin") {
+  // SKU Validation Functions
   function isValidBaseProductSku(string $sku): bool {
     return preg_match('/^[A-Za-z]+-\d{3}$/', $sku) === 1;
   }
 
+  // Variant SKU must follow the format
   function isValidVariantSku(string $sku): bool {
     return preg_match('/^[A-Za-z]+-\d{3}-V\d+$/', $sku) === 1;
   }
 
+  // General SKU validation that accepts either base product SKUs or variant SKUs
   function isValidProductSku(string $sku): bool {
     return isValidBaseProductSku($sku) || isValidVariantSku($sku);
   }
 
+  // Extracts the base product SKU from a variant SKU (e.g. PR-001-V1 → PR-001). Returns empty string if input is not a valid variant SKU.
   function getVariantBaseSku(string $sku): string {
     if (preg_match('/^([A-Za-z]+-\d{3})(?:-V\d+)?$/', $sku, $matches)) {
       return $matches[1];
@@ -750,9 +798,12 @@ if ($page === "inventory" && isset($_SESSION["user_role"]) && $_SESSION["user_ro
     return '';
   }
 
+  // Normalizes SKU input by trimming whitespace and converting to uppercase, ensuring consistent formatting for validation and database storage. 
   function normalizeProductSku(string $sku): string {
     return strtoupper(trim($sku));
   }
+
+// Handle Add Product, Update Product, and Add Variant form submissions with dynamic parameter handling based on form layout types.
 if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_POST["add_variant_submit"])) {
     $is_update  = isset($_POST["update_product"]);
     $is_variant = isset($_POST["add_variant_submit"]);
@@ -802,6 +853,7 @@ if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_P
         exit;
       }
 
+      // Inherit the price, category, discount, and image from the parent products for variant.
       $parent_stmt = $conn->prepare("SELECT price, category_id, discount_id, image_url FROM inventory WHERE sku = ?");
       if ($parent_stmt) {
         $parent_stmt->bind_param("s", $orig_sku);
@@ -845,6 +897,7 @@ if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_P
       }
     }
 
+    // For updates, we check if the SKU is being changed (which is not allowed) and handle image updates conditionally.
     if ($is_update) {
       if ($old_sku !== $sku) {
         $_SESSION['inventory_error'] = 'SKU cannot be changed while editing a product. Create a new product record instead.';
@@ -933,6 +986,7 @@ if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_P
     exit;
   }
 
+  // Handle Delete Product (and its variants) and Delete Category operations with proper redirection and feedback.
   if (isset($_POST["delete_sku"])) {
     $sku = $conn->real_escape_string(isset($_POST["delete_sku"]) ? $_POST["delete_sku"] : "");
     $conn->query("DELETE FROM inventory WHERE sku='$sku'");
@@ -1000,6 +1054,7 @@ if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_P
 }
 
 // ── CRM ───────────────────────────────────────────────────────
+// Handle Add Customer, Update Customer, and Delete Customer operations with validation and role-based access control.
 if ($page === "crm") {
   if (isset($_POST["add_customer"])) {
     $n_raw = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : '';
@@ -1027,11 +1082,13 @@ if ($page === "crm") {
       exit;
     }
 
+    // Combine and escape contact info for storage
     $c_email = $conn->real_escape_string($email_raw);
     $c_phone = $conn->real_escape_string($phone_raw);
     $c_combined = $conn->real_escape_string($c_email . ' / ' . $c_phone);
     // ── NEW: customer photo upload ──
     $photo_path = "";
+
     if (isset($_FILES["cust_photo"]) && $_FILES["cust_photo"]["error"] === 0) {
       $dir = "uploads/";
       if (!is_dir($dir)) mkdir($dir, 0777, true);
@@ -1042,6 +1099,7 @@ if ($page === "crm") {
     $member_since = isset($_POST['member_since']) && $_POST['member_since'] !== '' ? $conn->real_escape_string($_POST['member_since']) : null;
     $member_since_sql = $member_since ? "'" . $member_since . "'" : "NULL";
     $creator = $conn->real_escape_string($_SESSION['user_id']);
+
     if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin') {
       // Admin creates an approved customer
       $now = date('Y-m-d H:i:s');
@@ -1050,7 +1108,9 @@ if ($page === "crm") {
       if ($cid) {
         $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($cid,'created_and_approved','$creator','Created by admin and auto-approved')");
       }
-    } else {
+    } 
+
+    else {
       // Cashier creates a pending customer
       $conn->query("INSERT INTO customers (full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by) VALUES ('$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 0, '$creator')");
       $cid = $conn->insert_id;
@@ -1061,6 +1121,8 @@ if ($page === "crm") {
     header("Location: ?page=crm");
     exit;
   }
+
+  // Admins and Cashiers can update or delete customers, and only Admins can approve/reject.
   if (isset($_POST["delete_customer"]) && isset($_SESSION['user_role']) && ($_SESSION['user_role'] === 'Admin' || $_SESSION['user_role'] === 'Cashier')) {
     $id = (int)(isset($_POST["customer_id"]) ? $_POST["customer_id"] : 0);
 
@@ -1073,10 +1135,14 @@ if ($page === "crm") {
     header("Location: ?page=crm");
     exit;
   }
+
+  // Admins and Cashiers can update customer details, but only Admins can approve/reject customers
   if (isset($_POST["update_customer"]) && isset($_SESSION['user_role']) && ($_SESSION['user_role'] === 'Admin' || $_SESSION['user_role'] === 'Cashier')) {
     $id = (int)(isset($_POST["customer_id"])  ? $_POST["customer_id"]  : 0);
     $n_raw = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : '';
     $nameCheck = validateStaffName($n_raw);
+    
+    // Validate the full name input using the same rules as staff names (letters, spaces, and ñ/Ñ only)
     if ($nameCheck !== true) {
       $_SESSION["crm_error"] = $nameCheck;
       header("Location: ?page=crm");
@@ -1086,11 +1152,14 @@ if ($page === "crm") {
     $email_raw = isset($_POST["contact_email"]) ? trim($_POST["contact_email"]) : '';
     $phone_raw = isset($_POST["contact_number"]) ? trim($_POST["contact_number"]) : '';
 
+    // Validate email and phone number formats before escaping and saving to database
     if ($email_raw === '' || !preg_match('/^[A-Za-z0-9.]+@gmail\.com$/i', $email_raw)) {
       $_SESSION["crm_error"] = 'Email is required and must be a valid Gmail address (only letters, numbers and periods allowed before @gmail.com).';
       header("Location: ?page=crm");
       exit;
     }
+
+    // Validation: phone required, must be exactly 11 digits(numbers)
     if (!preg_match('/^[0-9]{11}$/', $phone_raw)) {
       $_SESSION["crm_error"] = 'Contact number is required and must be exactly 11 digits (numbers only).';
       header("Location: ?page=crm");
@@ -1102,6 +1171,8 @@ if ($page === "crm") {
     $c_combined = $conn->real_escape_string($c_email . ' / ' . $c_phone);
     // ── NEW: customer photo upload ──
     $photo_sql = "";
+
+    // If a new photo is uploaded, we process it and update the photo_url.
     if (isset($_FILES["cust_photo"]) && $_FILES["cust_photo"]["error"] === 0) {
       $dir = "uploads/";
       if (!is_dir($dir)) mkdir($dir, 0777, true);
@@ -1109,6 +1180,7 @@ if ($page === "crm") {
       move_uploaded_file($_FILES["cust_photo"]["tmp_name"], $photo_path);
       $photo_sql = ", photo_url='$photo_path'";
     }
+
     // Allow updating Member Since (`member_since`) if provided
     $created_sql = "";
     if (isset($_POST['member_since']) && $_POST['member_since'] !== '') {
@@ -1119,6 +1191,8 @@ if ($page === "crm") {
     header("Location: ?page=crm");
     exit;
   }
+
+  //APPROVAL OF CUSTOMERS
   // Approve a pending customer (Admin only)
   if (isset($_POST["approve_customer"]) && isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin') {
     $id = (int)(isset($_POST["customer_id"]) ? $_POST["customer_id"] : 0);
@@ -1129,6 +1203,7 @@ if ($page === "crm") {
     header("Location: ?page=crm");
     exit;
   }
+
   // Reject a pending customer (Admin only)
   if (isset($_POST["reject_customer"]) && isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin') {
     $id = (int)(isset($_POST["customer_id"]) ? $_POST["customer_id"] : 0);
@@ -1144,13 +1219,15 @@ if ($page === "crm") {
 
 
 // ── Employees ─────────────────────────────────────────────────
+// Handle Update Employee, Delete Employee, and Reset Passcode operations with role-based access control and session synchronization for profile edits
 if ($page === "employees" && $_SESSION["user_role"] === "Admin") {
   if (isset($_POST["update_employee"])) {
     $id       = $conn->real_escape_string(isset($_POST["employee_id"]) ? $_POST["employee_id"] : "");
     $name     = $conn->real_escape_string(isset($_POST["full_name"])   ? $_POST["full_name"]   : "");
     $role     = $conn->real_escape_string(isset($_POST["role"])        ? $_POST["role"]        : "Cashier");
     $job_role = ($role === "Admin") ? "Manager" : "Cashier";
-    // ── NEW: employee photo upload ──
+    
+    // Employee photo upload
     $photo_sql  = "";
     $photo_path = null;
     if (isset($_FILES["emp_photo"]) && $_FILES["emp_photo"]["error"] === 0) {
@@ -1161,7 +1238,7 @@ if ($page === "employees" && $_SESSION["user_role"] === "Admin") {
       $photo_sql = ", photo_url='$photo_path'";
     }
     $conn->query("UPDATE employees SET full_name='$name',role='$role',job_role='$job_role'$photo_sql WHERE employee_id='$id'");
-    // ── NEW: keep session in sync if editing own profile ──
+    // Keep session in sync if editing own profile
     if ($id === $_SESSION["user_id"]) {
       $_SESSION["user_name"] = $name;
       if ($photo_path !== null) {
@@ -1171,12 +1248,16 @@ if ($page === "employees" && $_SESSION["user_role"] === "Admin") {
     header("Location: ?page=employees");
     exit;
   }
+
+  // Deleting an employee will also delete their user account and invalidate their session if they are currently logged in
   if (isset($_POST["delete_employee"])) {
     $id = $conn->real_escape_string(isset($_POST["employee_id"]) ? $_POST["employee_id"] : "");
     $conn->query("DELETE FROM employees WHERE employee_id='$id'");
     header("Location: ?page=employees");
     exit;
   }
+
+  // Resetting an employee's passcode will set it to the new value provided in the form
   if (isset($_POST["reset_passcode"])) {
     $id = $conn->real_escape_string(isset($_POST["employee_id"])  ? $_POST["employee_id"]  : "");
     $pc = $conn->real_escape_string(isset($_POST["new_passcode"]) ? $_POST["new_passcode"] : "");
@@ -1201,8 +1282,8 @@ foreach ($__predef as $__pn) {
     }
 }
 
-
-// ══ DATA FETCH ═══════════════════════════════════════════════
+// ─── DATA FETCH ───────────────────────────────────────────────────────
+// Fetch categories, discounts, inventory, active promotions, customers, employees, approval history, and customer transaction history for use in various pages and reports.
 $cats_res  = $conn->query("SELECT * FROM categories ORDER BY category_name");
 $cats      = $cats_res ? $cats_res->fetch_all(MYSQLI_ASSOC) : [];
 $discs_res = $conn->query("SELECT * FROM discounts ORDER BY discount_id");
@@ -1231,7 +1312,7 @@ foreach ($employees as $e) {
   $empMap[$e['employee_id']] = $e['full_name'];
 }
 
-// Fetch approval history and map by customer_id
+// Fetch customer approval history and map by customer_id
 $historyMap = [];
 $hist_res = $conn->query("SELECT * FROM customer_approval_history ORDER BY ts DESC");
 if ($hist_res) {
@@ -1242,7 +1323,7 @@ if ($hist_res) {
   }
 }
 
-// Fetch customer transaction history and map by customer_id
+// Fetch sales with customer_id and map them by customer_id for quick access in CRM and reports
 $customerSalesMap = [];
 $sales_res = $conn->query("SELECT s.*, e.full_name as cashier FROM sales s LEFT JOIN employees e ON s.employee_id=e.employee_id WHERE s.customer_id IS NOT NULL ORDER BY s.sale_date DESC");
 if ($sales_res) {
@@ -1261,6 +1342,7 @@ if ($sales_res) {
   }
 }
 
+// For dashboard and reports, we calculate today's date, daily revenue, daily transactions, low stock count, total items, and total customers
 $date_today      = date("Y-m-d");
 $daily_rev       = 0;
 $daily_trx       = 0;
@@ -1271,12 +1353,14 @@ $total_customers = count($customers);
 $trx_row   = $conn->query("SELECT COUNT(*) as t FROM sales WHERE DATE(sale_date)='$date_today' AND status='Completed'")->fetch_assoc();
 $daily_trx = (int)$trx_row["t"];
 
+// Only fetch daily revenue and low stock count if we're on the dashboard page
 if ($page === "dashboard") {
   $rev_row   = $conn->query("SELECT COALESCE(SUM(total_amount),0) as t FROM sales WHERE DATE(sale_date)='$date_today' AND status='Completed'")->fetch_assoc();
   $daily_rev = floatval($rev_row["t"]);
   $low_stock = (int)$conn->query("SELECT COUNT(*) as t FROM inventory WHERE stock_qty < 10")->fetch_assoc()["t"];
 }
 
+// For reports page, we determine the report period based on the 'period' query parameter
 $report_period = isset($_GET["period"]) ? $_GET["period"] : "today";
 echo "<!-- [Event] report_period='" . htmlspecialchars($report_period, ENT_QUOTES, 'UTF-8') . "' -->\n";
 switch ($report_period) { //switch statement to determine date range for reports based on 'period' query parameter
@@ -1307,11 +1391,12 @@ if ($page === "reports") {
     }
 }
 
+// For inventory page, we determine the active tab based on the 'tab' query parameter
 $activeTab = isset($_GET["tab"]) ? $_GET["tab"] : "items";
 echo "<!-- [Event] activeTab='" . htmlspecialchars($activeTab, ENT_QUOTES, 'UTF-8') . "' -->\n";
 
-// ══ HELPER FUNCTIONS ═════════════════════════════════════════
-
+// ─── HELPER FUNCTIONS ───────────────────────────────────
+// For price calculation, initials generation, staff name validation, email validation, order ID generation, sale total calculation, and factorial computation
 function effectivePrice($item) //function to calculate effective price of an item after applying discount if applicable
 {
   $p = floatval($item["price"]);
@@ -1388,6 +1473,7 @@ function factorial(int $n): int
   return $result;
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -2674,7 +2760,7 @@ function factorial(int $n): int
       position: relative;
     }
 
-.inv-card-img img {
+    .inv-card-img img {
       width: 100%;
       height: 100%;
       object-fit: cover;
@@ -3233,13 +3319,14 @@ function factorial(int $n): int
 </head>
 
 <body>
-
   <?php if ($page === 'login'): ?>
     <div class="auth-wrap">
       <div class="auth-box">
         <div class="auth-logo">Bloom POS</div>
         <div class="auth-sub">Flower Shop Point of Sale</div>
         <?php if ($auth_error !== ''): ?><div class="auth-err"><?= htmlspecialchars($auth_error, ENT_QUOTES, 'UTF-8') ?></div>
+        
+        <!-- Script for auto-resetting the login form and focusing the employee ID field if there's an authentication error -->
         <script>
           document.addEventListener('DOMContentLoaded', function(){
             var err = <?= json_encode($auth_error) ?>;
@@ -3249,6 +3336,8 @@ function factorial(int $n): int
             }
           });
         </script>
+
+        <!-- Display a success message if the user has just registered an account -->
         <?php endif; ?>
         <?php if (isset($_GET['registered'])): ?><div class="auth-ok">Account created. You may now log in.</div><?php endif; ?>
         <form method="POST" action="?page=login">
@@ -3265,13 +3354,15 @@ function factorial(int $n): int
     </div>
 
 
-
+  <!-- Employee registration page, accessible only to admins, with form validation and error handling -->
   <?php elseif ($page === 'register'): ?>
     <div class="auth-wrap">
       <div class="auth-box" style="width:420px;">
         <div class="auth-logo">Bloom POS</div>
         <div class="auth-sub">Register Staff Account</div>
         <?php if ($reg_error !== ''): ?><div class="auth-err"><?= htmlspecialchars($reg_error, ENT_QUOTES, 'UTF-8') ?></div>
+        
+        <!-- Script for auto-resetting the registration form and focusing the employee ID field if there's a registration error -->
         <script>
           document.addEventListener('DOMContentLoaded', function(){
             var err = <?= json_encode($reg_error) ?>;
@@ -3281,6 +3372,8 @@ function factorial(int $n): int
             }
           });
         </script>
+
+        <!-- Display a success message if the account was created successfully and prompt the user to log in -->
         <?php endif; ?>
         <form method="POST" action="?page=register" enctype="multipart/form-data">
           <div class="form-row">
@@ -3305,6 +3398,7 @@ function factorial(int $n): int
       </div>
     </div>
 
+  <!-- Showcase bundle management page, allowing admins to create and manage premium flower bundles, and displaying the best-selling bundle based on sales data -->
   <?php elseif ($page === 'showcase'): ?>
     <?php
       $showcaseBundles = [];
@@ -3324,6 +3418,7 @@ function factorial(int $n): int
         if (!empty($br['name'])) $bestShowcaseName = $br['name'];
       }
     ?>
+
     <div class="page">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; gap:16px;">
         <div style="display:flex; align-items:center; gap:14px;">
@@ -3337,12 +3432,12 @@ function factorial(int $n): int
             <button type="button" class="btn btn-primary add-showcase-btn" onclick="openAddShowcaseModal()">Add Showcase</button>
           <?php endif; ?>
         </div>
-
       <div class="showcase-panel">
         <div class="showcase-grid" id="showcaseGrid"></div>
       </div>
     </div>
 
+    <!-- Modal for displaying showcase bundle details and allowing the user to add it to their cart -->
     <div class="overlay" id="showcaseModal">
       <div class="modal-box wide" style="max-width:920px; width:100%;">
         <div class="modal-header">
@@ -3365,6 +3460,7 @@ function factorial(int $n): int
       </div>
     </div>
 
+        <!-- If there was an error during the payment process, display it in an alert box on page load -->
         <?php if (isset($_SESSION['payment_error']) && $_SESSION['payment_error'] !== ''): ?>
           <script>
             document.addEventListener('DOMContentLoaded', function(){
@@ -3378,6 +3474,7 @@ function factorial(int $n): int
           </script>
         <?php unset($_SESSION['payment_error']); endif; ?>
 
+    <!-- Modal for adding a new showcase bundle, accessible only to admins, with form fields for bundle details and image upload, and client-side validation -->
     <div class="overlay" id="addShowcaseModal">
       <div class="modal-box" style="max-width:520px; width:100%;">
         <div class="modal-header">
@@ -3400,6 +3497,7 @@ function factorial(int $n): int
       </div>
     </div>
 
+    <!-- Modal for confirming deletion of a showcase bundle, with a warning message and options to cancel or confirm the deletion -->
     <div class="overlay" id="deleteConfirmModal">
       <div class="modal-box" style="max-width:420px; width:100%;">
         <div class="modal-header">
@@ -3416,6 +3514,7 @@ function factorial(int $n): int
       </div>
     </div>
 
+    <!-- Style for the showcase bundle management page -->
     <style>
       .showcase-panel { padding: 18px 0; }
       .showcase-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:26px; }
@@ -3456,6 +3555,7 @@ function factorial(int $n): int
       @media(max-width:760px) { .showcase-controls { flex-direction:column; } .showcase-nav-btn { width:42px; height:42px; } .showcase-card { min-width:100%; flex:0 0 100%; max-width:100%; } }
     </style>
 
+    <!-- Script for managing the showcase bundles, including displaying bundle details, checking stock availability, and handling the addition of bundles to the cart -->
     <script>
       const SHOWCASE_BUNDLES = <?= json_encode($showcaseBundles, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       const allProducts = <?= json_encode($inventory, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
@@ -3895,6 +3995,7 @@ function factorial(int $n): int
       }
     </script>
 
+  <!-- Checkout Page: Displays the checkout interface where users can search for products, view product categories, and add items to their cart -->
   <?php elseif ($page === 'checkout'): ?>
     <div class="checkout-wrap">
       <div class="co-left">
@@ -3917,6 +4018,7 @@ function factorial(int $n): int
           </div>
         </div>
 
+        <!-- Display selected bundle information if coming from a bundle selection, including the required number of main flowers, fillers, and greenery to complete the bouquet -->
         <?php
           $bundleName = isset($_GET['bundle_name']) ? trim($_GET['bundle_name']) : '';
           $bundleMain = isset($_GET['main']) ? intval($_GET['main']) : 0;
@@ -3936,7 +4038,8 @@ function factorial(int $n): int
             <span class="cat-pill" data-cat="<?= htmlspecialchars($c['category_name'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($c['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
           <?php endforeach; ?>
         </div>
-
+        
+        <!-- Display a success message if a sale was completed successfully, showing the order ID if available -->
         <?php if (isset($_GET['success'])): ?>
           <div class="alert alert-success" style="flex-shrink:0;">
             Sale <strong><?php echo htmlspecialchars(isset($_GET['order_id']) ? $_GET['order_id'] : '', ENT_QUOTES, 'UTF-8'); ?></strong> completed successfully.

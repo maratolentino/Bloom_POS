@@ -1,7 +1,5 @@
 <?php
 
-
-
 /**automatically load classes without requiring manual includes*/
 
 // Define the base directories for our class files
@@ -15,7 +13,6 @@ define('CLASSES_PATH', BASE_PATH . '/classes');
 function customAutoloader(string $class): void { //$class is the name of the class being instantiated, passed by PHP to the autoloader function
     // Convert class name to file path
     $file = CLASSES_PATH . '/' . str_replace('\\', '/', $class) . '.php';
-    
     
     if (file_exists($file)) {
         require_once $file;

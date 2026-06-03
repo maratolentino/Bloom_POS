@@ -42,8 +42,6 @@ class Product {
         return $this->name . " (" . $this->sku . ") - ₱" . number_format($this->price, 2) . " | Stock: " . $this->stock . " [" . $this->category . "]";
     }
 
-
-
     public static function fromDbRow(array $row): self {
         // Factory Method: instantiate the correct subclass based on category
         $category = $row['category_name'] ?? '';
@@ -75,7 +73,7 @@ class Product {
     public function isAvailable(): bool {
         return $this->stock > 0;
     }
- 
+
     // Reduce stock after a sale
     public function deductStock(int $qty): bool {
         if ($qty > $this->stock) return false;
@@ -89,7 +87,8 @@ class Product {
             return false;
         }
 
-        $stmt = $conn->prepare("UPDATE inventory SET stock_qty = stock_qty + ? WHERE sku = ?");
+        // Update the database first to ensure data integrity before modifying the object's stock
+        $stmt = $conn->prepare("UPDATE inventory SET stock_qty = stock_qty + ? WHERE sku = ?"); // sku for product id in inventory table
         if (!$stmt) {
             return false;
         }
@@ -103,12 +102,13 @@ class Product {
         return $result;
     }
 
-    // Restock a product by SKU using a lightweight factory object
+    // Restock a product by SKU using a static method that retrieves the product from the database
     public static function restockBySku(mysqli $conn, string $sku, int $qty): bool {
         if ($qty <= 0) {
             return false;
         }
 
+        // Retrieve the product from the database to ensure we have the latest stock information before restocking
         $stmt = $conn->prepare(
             "SELECT inventory.*, categories.category_name
             FROM inventory
@@ -119,6 +119,7 @@ class Product {
             return false;
         }
 
+        // Bind the SKU parameter and execute the query to fetch the product details
         $stmt->bind_param("s", $sku);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -160,9 +161,6 @@ class Product {
         }
     } //
 
-
-
-
 // Inheritance: Child classes extending the base Product class
 
 class FlowerProduct extends Product { //extends Product to create a specific type of product with preset category and description values for flowers, demonstrating inheritance
@@ -171,7 +169,7 @@ class FlowerProduct extends Product { //extends Product to create a specific typ
     }
 }
 
-
+// __construct() is used for setting default category and description
 class ArrangementProduct extends Product {
     public function __construct(string $sku, string $name, float $price, int $stock) {
         parent::__construct($sku, $name, $price, $stock, "Arrangements", "Custom flower arrangement");
