@@ -686,12 +686,12 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
 
   // Insert the sale record into the database, including wallet payment details if applicable.
   if ($hasWalletCols) {
-    $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+    $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
     if ($stmt) {
       $stmt->bind_param("ssdddsdsssisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
     } // ssdddsdsssisssi = string, string, double, double, double, string, double, string, string, string, int, string, string, int, int
   } else {
-    $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+    $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
     if ($stmt) {
       $stmt->bind_param("ssdddsdisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
     }
@@ -704,7 +704,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
       $qty   = (int)$item["qty"];
       $price = floatval($item["price"]);
       $sub   = $price * $qty;
-      $conn->query("INSERT INTO sale_items (transaction_id,sku,quantity,price_at_time,subtotal) VALUES ('$order_id','$sku',$qty,$price,$sub)");
+      $conn->query("INSERT INTO sale_items (order_id,sku,quantity,price_at_time,subtotal) VALUES ('$order_id','$sku',$qty,$price,$sub)");
       $conn->query("UPDATE inventory SET stock_qty = stock_qty - $qty WHERE sku = '$sku' AND stock_qty >= $qty");
     }
     if ($customer_id) {
@@ -1333,8 +1333,8 @@ $sales_res = $conn->query("SELECT s.*, e.full_name as cashier FROM sales s LEFT 
 if ($sales_res) {
   while ($sale = $sales_res->fetch_assoc()) {
     $sale['items'] = [];
-    $txn_esc = $conn->real_escape_string($sale['transaction_id']);
-    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.transaction_id='$txn_esc'");
+    $txn_esc = $conn->real_escape_string($sale['order_id']);
+    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.order_id='$txn_esc'");
     if ($items_res) {
       while ($item = $items_res->fetch_assoc()) {
         $sale['items'][] = $item;
@@ -1385,7 +1385,12 @@ if ($page === "reports") {
   $r_rev   = $conn->query("SELECT COALESCE(SUM(total_amount),0) as t FROM sales WHERE $r_where AND status='Completed'")->fetch_assoc()["t"];
   $r_trx   = $conn->query("SELECT COUNT(*) as t FROM sales WHERE $r_where AND status='Completed'")->fetch_assoc()["t"];
   $r_sales = $conn->query("SELECT s.*,e.full_name as cashier FROM sales s LEFT JOIN employees e ON s.employee_id=e.employee_id WHERE $r_where ORDER BY s.sale_date DESC LIMIT 100");
-  $r_top   = $conn->query("SELECT i.product_name,SUM(si.quantity) as cnt,SUM(si.subtotal) as rev FROM sale_items si JOIN inventory i ON si.sku=i.sku JOIN sales s ON si.transaction_id=s.transaction_id WHERE $r_where AND s.status='Completed' GROUP BY si.sku ORDER BY cnt DESC LIMIT 5");
+  $r_top = $conn->query("SELECT i.product_name,SUM(si.quantity) as cnt,SUM(si.subtotal) as rev 
+    FROM sale_items si 
+    JOIN inventory i ON si.sku=i.sku 
+    JOIN sales s ON si.order_id=s.order_id 
+    WHERE $r_where AND s.status='Completed' 
+    GROUP BY si.sku ORDER BY cnt DESC LIMIT 5");
     // Determine best selling showcase bundle for the selected period
     $r_best_bundle = '—';
     $bestQ = $conn->query("SELECT COALESCE(sb.name, ss.bundle_name) as name, SUM(ss.quantity) as cnt FROM showcase_sales ss LEFT JOIN showcase_bundles sb ON ss.showcase_id=sb.showcase_id WHERE $r_where GROUP BY ss.showcase_id, ss.bundle_name ORDER BY cnt DESC LIMIT 1");
@@ -7179,7 +7184,7 @@ function factorial(int $n): int
               <div class="card">
                 <div style="font-size:14px; font-weight:700; color:var(--espresso); margin-bottom:14px;">Sales by Employee</div>
                 <?php
-                $emp_sales = $conn->query("SELECT e.full_name, COUNT(s.transaction_id) as cnt, COALESCE(SUM(s.total_amount),0) as rev
+                $emp_sales = $conn->query("SELECT e.full_name, COUNT(s.order_id) as cnt, COALESCE(SUM(s.total_amount),0) as rev
                                    FROM sales s JOIN employees e ON s.employee_id=e.employee_id
                                    WHERE $r_where AND s.status='Completed'
                                    GROUP BY s.employee_id ORDER BY rev DESC");
@@ -7231,9 +7236,9 @@ function factorial(int $n): int
                   <?php $r_sales_rows = $r_sales ? $r_sales->fetch_all(MYSQLI_ASSOC) : [];
 if (!empty($r_sales_rows)):
   foreach ($r_sales_rows as $s):
-    $sku_esc = $conn->real_escape_string($s['transaction_id']);
+    $sku_esc = $conn->real_escape_string($s['order_id']);
     // Fetch sale items with product names for details view
-    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.transaction_id='$sku_esc'");
+    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.order_id='$sku_esc'");
     $items_array = [];
     if ($items_res) {
       while ($it = $items_res->fetch_assoc()) {
@@ -7243,8 +7248,8 @@ if (!empty($r_sales_rows)):
     // ── Order ID = same value the Checkout page shows: #1000 + nth completed sale of that day
     $sale_day_esc  = $conn->real_escape_string(date('Y-m-d', strtotime($s['sale_date'])));
     $sale_date_esc = $conn->real_escape_string($s['sale_date']);
-    $txn_esc       = $conn->real_escape_string($s['transaction_id']);
-    $pos_row = $conn->query("SELECT COUNT(*) as n FROM sales WHERE DATE(sale_date)='$sale_day_esc' AND status='Completed' AND (sale_date < '$sale_date_esc' OR (sale_date = '$sale_date_esc' AND transaction_id <= '$txn_esc'))")->fetch_assoc();
+    $txn_esc       = $conn->real_escape_string($s['order_id']);
+    $pos_row = $conn->query("SELECT COUNT(*) as n FROM sales WHERE DATE(sale_date)='$sale_day_esc' AND status='Completed' AND (sale_date < '$sale_date_esc' OR (sale_date = '$sale_date_esc' AND order_id <= '$txn_esc'))")->fetch_assoc();
     $order_id_display = '#' . (1000 + (int)($pos_row ? $pos_row['n'] : 1));
     // Prepare details payload including conditional wallet fields (if present in DB)
     $details = $s;
