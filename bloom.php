@@ -4059,8 +4059,8 @@ function factorial(int $n): int
             ?>
               <div class="prod-tile"
                 data-sku="<?= htmlspecialchars($item['sku'], ENT_QUOTES, 'UTF-8') ?>"
-                data-cat="<?= htmlspecialchars($item['category_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
-                data-name="<?= strtolower(htmlspecialchars($item['product_name'], ENT_QUOTES, 'UTF-8')) ?>"
+                data-cat="<?= htmlspecialchars(strtolower($item['category_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                data-name="<?= htmlspecialchars(strtolower((string)($item['product_name'] ?? '')), ENT_QUOTES, 'UTF-8') ?>"
                 onclick="addToCart(<?= htmlspecialchars(json_encode([
                                       'sku'          => $item['sku'],
                                       'product_name' => $item['product_name'],
