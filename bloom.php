@@ -167,6 +167,10 @@ function getNextProductSku(mysqli $conn): string {
   return $nextSku;
 }
 
+function bloom_reserved_is_int_check($value): bool {
+    return is_int($value);
+}
+
 // AJAX endpoint to retrieve showcase bundles. 
 // Returns a JSON array of showcase items with their details. This is used on the frontend to display the available showcase bundles for customers to choose from.
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_showcase'])) {
