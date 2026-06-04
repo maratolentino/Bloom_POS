@@ -34,6 +34,47 @@ if (!isset($_SESSION['__bloom_initialized'])) {
     if (isset($_SESSION['cart'])) unset($_SESSION['cart']);
 }
 
+// ── Inactivity timeout check (10 seconds)
+$INACTIVITY_TIMEOUT = 10; // seconds
+if (isset($_SESSION['user_id']) && $_SESSION['user_id'] !== '') {
+    $current_time = time();
+    
+    // If last activity is not set, initialize it
+    if (!isset($_SESSION['__last_activity'])) {
+        $_SESSION['__last_activity'] = $current_time;
+    } else {
+        $time_since_activity = $current_time - $_SESSION['__last_activity'];
+        
+        // Check if inactivity timeout has been exceeded
+        if ($time_since_activity > $INACTIVITY_TIMEOUT) {
+            // Session has expired due to inactivity
+            $_SESSION = array();
+            if (ini_get('session.use_cookies')) {
+                $params = session_get_cookie_params();
+                setcookie(session_name(), '', time() - 42000,
+                    $params['path'], $params['domain'], $params['secure'], $params['httponly']
+                );
+            }
+            session_destroy();
+            
+            // Redirect to login page
+            if (!headers_sent()) {
+                header('Location: ?page=login');
+                exit;
+            }
+        }
+    }
+    
+    // Update last activity timestamp on each request
+    $_SESSION['__last_activity'] = $current_time;
+
+    // Send a pure-PHP refresh header to force browser redirect to login after timeout.
+    // This is PHP-only and does not rely on JavaScript.
+    if ($_SERVER['REQUEST_METHOD'] === 'GET' && !headers_sent() && stripos($_SERVER['HTTP_ACCEPT'] ?? '', 'text/html') !== false) {
+        header("Refresh: $INACTIVITY_TIMEOUT; url=?page=login");
+    }
+}
+
 /**
  * Return the full cart array (sku => qty)
  */
