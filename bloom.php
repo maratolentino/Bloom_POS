@@ -682,12 +682,12 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
 
   // Insert the sale record into the database, including wallet payment details if applicable.
   if ($hasWalletCols) {
-    $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+    $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
     if ($stmt) {
       $stmt->bind_param("ssdddsdsssisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
     } // ssdddsdsssisssi = string, string, double, double, double, string, double, string, string, string, int, string, string, int, int
   } else {
-    $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+    $stmt = $conn->prepare("INSERT INTO sales (transaction_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
     if ($stmt) {
       $stmt->bind_param("ssdddsdisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
     }
@@ -700,7 +700,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
       $qty   = (int)$item["qty"];
       $price = floatval($item["price"]);
       $sub   = $price * $qty;
-      $conn->query("INSERT INTO sale_items (order_id,sku,quantity,price_at_time,subtotal) VALUES ('$order_id','$sku',$qty,$price,$sub)");
+      $conn->query("INSERT INTO sale_items (transaction_id,sku,quantity,price_at_time,subtotal) VALUES ('$order_id','$sku',$qty,$price,$sub)");
       $conn->query("UPDATE inventory SET stock_qty = stock_qty - $qty WHERE sku = '$sku' AND stock_qty >= $qty");
     }
     if ($customer_id) {
@@ -1329,8 +1329,8 @@ $sales_res = $conn->query("SELECT s.*, e.full_name as cashier FROM sales s LEFT 
 if ($sales_res) {
   while ($sale = $sales_res->fetch_assoc()) {
     $sale['items'] = [];
-    $txn_esc = $conn->real_escape_string($sale['order_id']);
-    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.order_id='$txn_esc'");
+    $txn_esc = $conn->real_escape_string($sale['transaction_id']);
+    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.transaction_id='$txn_esc'");
     if ($items_res) {
       while ($item = $items_res->fetch_assoc()) {
         $sale['items'][] = $item;
@@ -1381,7 +1381,7 @@ if ($page === "reports") {
   $r_rev   = $conn->query("SELECT COALESCE(SUM(total_amount),0) as t FROM sales WHERE $r_where AND status='Completed'")->fetch_assoc()["t"];
   $r_trx   = $conn->query("SELECT COUNT(*) as t FROM sales WHERE $r_where AND status='Completed'")->fetch_assoc()["t"];
   $r_sales = $conn->query("SELECT s.*,e.full_name as cashier FROM sales s LEFT JOIN employees e ON s.employee_id=e.employee_id WHERE $r_where ORDER BY s.sale_date DESC LIMIT 100");
-  $r_top   = $conn->query("SELECT i.product_name,SUM(si.quantity) as cnt,SUM(si.subtotal) as rev FROM sale_items si JOIN inventory i ON si.sku=i.sku JOIN sales s ON si.order_id=s.order_id WHERE $r_where AND s.status='Completed' GROUP BY si.sku ORDER BY cnt DESC LIMIT 5");
+  $r_top   = $conn->query("SELECT i.product_name,SUM(si.quantity) as cnt,SUM(si.subtotal) as rev FROM sale_items si JOIN inventory i ON si.sku=i.sku JOIN sales s ON si.transaction_id=s.transaction_id WHERE $r_where AND s.status='Completed' GROUP BY si.sku ORDER BY cnt DESC LIMIT 5");
     // Determine best selling showcase bundle for the selected period
     $r_best_bundle = '—';
     $bestQ = $conn->query("SELECT COALESCE(sb.name, ss.bundle_name) as name, SUM(ss.quantity) as cnt FROM showcase_sales ss LEFT JOIN showcase_bundles sb ON ss.showcase_id=sb.showcase_id WHERE $r_where GROUP BY ss.showcase_id, ss.bundle_name ORDER BY cnt DESC LIMIT 1");
@@ -4046,6 +4046,8 @@ function factorial(int $n): int
           </div>
         <?php endif; ?>
 
+      
+        <!-- Product selection area: browse available products and add items to the cart -->
         <div class="co-products">
           <div class="prod-grid" id="prod-grid">
             <?php foreach ($inventory as $item):
@@ -4268,6 +4270,7 @@ function factorial(int $n): int
       let cart = [];
       let selectedCustomerId = '';
       const STORE_INFO = <?= json_encode($store_info, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+      // Bundle selection state used for checkout validation and UI restrictions
       const allProducts = <?= json_encode($inventory) ?>;
       // Normalize inventory product objects to include a consistent `category` property
       (function(){
@@ -4329,6 +4332,7 @@ function factorial(int $n): int
           try { localStorage.setItem('selected_bundle', JSON.stringify(SELECTED_BUNDLE)); } catch(e) {}
         }
       } catch(e) { /* ignore */ }
+      // Loyalty points totals keyed by customer id for redeeming at checkout
       const CUSTOMER_POINTS = <?= json_encode(array_reduce($customers, function($carry,$c){ $carry[$c['customer_id']] = intval($c['loyalty_points'] ?? 0); return $carry; }, []), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
       function getSelectedCustomerValue() {
@@ -4395,6 +4399,7 @@ function factorial(int $n): int
         }
       }
 
+      // Customer selection combobox behavior and keyboard navigation
       function initCustomerCombobox() {
         const wrapper = document.getElementById('customer_combobox');
         const control = document.getElementById('customer_combo_control');
@@ -4522,6 +4527,7 @@ function factorial(int $n): int
         }catch(e){}
       })();
 
+      // Send cart updates to the server and handle JSON responses cleanly
       async function serverCartAction(action, sku, qty){
         console.debug('serverCartAction', action, sku, qty);
         const body = new URLSearchParams();
@@ -4582,6 +4588,7 @@ function factorial(int $n): int
         toast(p.product_name + ' added');
       }
 
+      // Rebuild cart UI after any change to items, quantity, or bundle restrictions
       function renderCart() {
         const list = document.getElementById('cart_list');
         if (cart.length === 0) {
@@ -4630,6 +4637,7 @@ function factorial(int $n): int
         try { localStorage.setItem('cart_local', JSON.stringify(cart)); } catch(e) {}
       }
 
+      // Apply bundle-based restrictions to product tiles based on current cart contents
       function updateCategoryRestrictions() {
         const getKey = (c) => {
           const s = (c||'').toLowerCase();
@@ -4667,6 +4675,7 @@ function factorial(int $n): int
         });
       }
 
+      // Adjust quantity for a cart line item with server-side validation
       async function chgQty(i, d) {
         const item = cart[i];
         const newQty = item.qty + d;
@@ -4806,6 +4815,7 @@ function factorial(int $n): int
         })();
       }
 
+      // Calculate subtotal, discounts, taxes, points, and final payable amount
       function calcTotals() {
         const sub = cart.reduce((s, i) => s + i.price * i.qty, 0);
         const sel = document.getElementById('promo_select');
@@ -5050,6 +5060,7 @@ function factorial(int $n): int
         });
       }
 
+      // Update receipt preview content and hidden checkout fields before payment
       function updateReceipt() {
         // Build receipt items HTML, include selected showcase bundle details if present
         try {
@@ -5089,6 +5100,7 @@ function factorial(int $n): int
         } catch (e) { /* ignore */ }
       }
 
+      // Switch form fields when payment method changes between cash and digital wallet
       function handlePaymentMethodChange(method) {
         const cashArea = document.getElementById('cash_area');
         const walletArea = document.getElementById('digital_wallet_area');
@@ -5130,6 +5142,7 @@ function factorial(int $n): int
         validatePaymentForm();
       }
       
+      // Validate payment form inputs and display warnings for invalid entries
       function validatePaymentForm() {
         const pm = document.querySelector('input[name="payment_method"]:checked');
         let submitBtn = document.getElementById('submit_sale_btn');
@@ -5214,6 +5227,7 @@ function factorial(int $n): int
         }
       }
 
+      // Format cash input as currency while typing
       function fmtCash(el) {
         let raw = el.value.replace(/[^0-9]/g, '');
         if (!raw) {
@@ -5262,6 +5276,7 @@ function factorial(int $n): int
       }
       
       // Add event listeners for digital wallet fields
+      // Wire up DOM-ready event listeners for payment form, inputs and debug helpers
       document.addEventListener('DOMContentLoaded', function() {
         const walletContact = document.getElementById('wallet_contact');
         const walletAccount = document.getElementById('wallet_account_name');
@@ -5401,11 +5416,13 @@ function factorial(int $n): int
     </script>
 
   <?php else:
+    // Non-checkout page layout: user profile and application sidebar for management pages
     // ── UPDATED: pull photo from session ──
     $initials   = isset($_SESSION['user_name']) ? makeInitials($_SESSION['user_name']) : '';
     $user_photo = isset($_SESSION['user_photo']) ? $_SESSION['user_photo'] : '';
     $is_admin   = (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin');
   ?>
+    <!-- App shell for non-checkout pages: sidebar navigation and page content -->
     <div class="app">
       <div class="overlay" id="confirmDialogModal">
         <div class="modal-box" style="max-width:420px;">
@@ -5664,6 +5681,7 @@ function factorial(int $n): int
         <?php endif; ?>
       </nav>
 
+      <!-- Main content area for the currently selected management page -->
       <main class="main">
         <?php
 
@@ -6247,6 +6265,7 @@ function factorial(int $n): int
               document.getElementById('form_qty').focus();
             }
             
+            // Preview selected product image before upload
             function previewImage(input) {
               const previewContainer = document.getElementById('image_preview_container');
               const previewImg = document.getElementById('image_preview');
@@ -6263,6 +6282,7 @@ function factorial(int $n): int
               }
             }
 
+            // Support opening the edit product modal when SKU is provided in the URL
             function openEditModalBySku(sku) {
               const item = inventoryItems.find(i => i.sku === sku);
               if (item) {
@@ -6270,6 +6290,7 @@ function factorial(int $n): int
               }
             }
 
+            // Initialize inventory page actions and category filtering on load
             window.addEventListener('DOMContentLoaded', () => {
               const params = new URLSearchParams(window.location.search);
               const sku = params.get('open_sku');
@@ -6293,12 +6314,14 @@ function factorial(int $n): int
             });
 
 
+            // Open the edit category modal with prefilled values
             function openEditCatModal(id, name) {
               document.getElementById('edit_cat_id').value = id;
               document.getElementById('edit_cat_name').value = name;
               document.getElementById('editCatModal').classList.add('open');
             }
 
+            // Format currency input fields in product and discount forms
             function fmtCurr(input) {
               let raw = input.value.replace(/[^0-9]/g, '');
               if (!raw) {
@@ -6325,6 +6348,7 @@ function factorial(int $n): int
               }
             }
 
+            // Normalize discount input values depending on selected discount type
             function fmtDisc(input) {
               const type = document.getElementById('disc_type_sel').value;
               let raw = input.value.replace(/[^0-9.]/g, '');
@@ -6341,10 +6365,12 @@ function factorial(int $n): int
               if (n > max) n = max;
               input.value = n.toFixed(2);
             }
+            // Close modals when their overlay background is clicked
             document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
               if (e.target === o) o.classList.remove('open');
             }));
 
+            // Shared confirmation/prompt dialog elements and helpers
             const confirmDialogModal = document.getElementById('confirmDialogModal');
             const confirmDialogTitle = document.getElementById('confirmDialogTitle');
             const confirmDialogMessage = document.getElementById('confirmDialogMessage');
@@ -6380,6 +6406,7 @@ function factorial(int $n): int
               }
             }
 
+            // Open a simple confirm dialog with customizable text
             function showConfirm(message, title, confirmText, cancelText) {
               return openDialog({
                 title: title || 'Confirm action',
@@ -6432,6 +6459,7 @@ function factorial(int $n): int
               }
             });
 
+            // Global handler for form-level prompt and confirm behavior
             document.addEventListener('submit', function(event) {
               const form = event.target;
               if (!(form instanceof HTMLFormElement)) return;
@@ -6455,6 +6483,7 @@ function factorial(int $n): int
               }
             });
 
+            // Handle elements that require confirmation before following through
             document.addEventListener('click', function(event) {
               const trigger = event.target.closest('[data-confirm]');
               if (!trigger) return;
@@ -6680,6 +6709,7 @@ function factorial(int $n): int
           </div>
 
           <script>
+            // Populate and open the customer edit modal with selected customer data
             function openEditCust(c) {
               document.getElementById('edit_cust_id').value = c.customer_id;
               document.getElementById('edit_cust_name').value = c.full_name;
@@ -6723,8 +6753,10 @@ function factorial(int $n): int
             </div>
           </div>
           <script>
+            // Mapping of customer IDs to their transaction history for the history modal
             const CUSTOMER_SALES = <?= json_encode($customerSalesMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?> || {};
 
+            // Open customer history modal and populate entries dynamically
             function openHistory(cid) {
               const modal = document.getElementById('historyModal');
               const container = document.getElementById('historyContent');
@@ -6917,8 +6949,8 @@ function factorial(int $n): int
             document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
               if (e.target === o) o.classList.remove('open');
             }));
-              
-              // `rand(min,max)` returns integer in [min,max]
+            
+            // Random passcode helper functions used by the reset passcode modal
               function rand(min, max) {
                 min = Math.floor(min);
                 max = Math.floor(max);
@@ -6949,7 +6981,7 @@ function factorial(int $n): int
               }
           </script>
 
-            <!-- Employee History Modal -->
+            <!-- Employee History Modal: shows session records for selected staff -->
             <div class="overlay" id="employeeHistoryModal">
               <div class="modal-box" style="max-width:760px; width:100%;">
                 <div class="modal-header">
@@ -6978,8 +7010,10 @@ function factorial(int $n): int
             </div>
 
             <script>
+              // Live timer state for active employee history records
               let employeeHistoryTimer = null;
 
+            // Fetch and render employee session history in the modal
             async function openEmployeeHistory(employeeId) {
                 if (!employeeId) return;
                 const modal = document.getElementById('employeeHistoryModal');
@@ -7032,6 +7066,7 @@ function factorial(int $n): int
                 }
               }
 
+              // Stop live timer updates when no active employee session rows remain
               function clearEmployeeHistoryTimer() {
                 if (employeeHistoryTimer !== null) {
                   clearInterval(employeeHistoryTimer);
@@ -7039,6 +7074,7 @@ function factorial(int $n): int
                 }
               }
 
+              // Refresh active session timers once per second while modal is open
               function updateEmployeeHistoryTimers() {
                 const activeCells = document.querySelectorAll('#employeeHistoryModal .session-duration-cell[data-active="1"]');
                 if (!activeCells.length) {
@@ -7139,7 +7175,7 @@ function factorial(int $n): int
               <div class="card">
                 <div style="font-size:14px; font-weight:700; color:var(--espresso); margin-bottom:14px;">Sales by Employee</div>
                 <?php
-                $emp_sales = $conn->query("SELECT e.full_name, COUNT(s.order_id) as cnt, COALESCE(SUM(s.total_amount),0) as rev
+                $emp_sales = $conn->query("SELECT e.full_name, COUNT(s.transaction_id) as cnt, COALESCE(SUM(s.total_amount),0) as rev
                                    FROM sales s JOIN employees e ON s.employee_id=e.employee_id
                                    WHERE $r_where AND s.status='Completed'
                                    GROUP BY s.employee_id ORDER BY rev DESC");
@@ -7191,9 +7227,9 @@ function factorial(int $n): int
                   <?php $r_sales_rows = $r_sales ? $r_sales->fetch_all(MYSQLI_ASSOC) : [];
 if (!empty($r_sales_rows)):
   foreach ($r_sales_rows as $s):
-    $sku_esc = $conn->real_escape_string($s['order_id']);
+    $sku_esc = $conn->real_escape_string($s['transaction_id']);
     // Fetch sale items with product names for details view
-    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.order_id='$sku_esc'");
+    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.transaction_id='$sku_esc'");
     $items_array = [];
     if ($items_res) {
       while ($it = $items_res->fetch_assoc()) {
@@ -7203,8 +7239,8 @@ if (!empty($r_sales_rows)):
     // ── Order ID = same value the Checkout page shows: #1000 + nth completed sale of that day
     $sale_day_esc  = $conn->real_escape_string(date('Y-m-d', strtotime($s['sale_date'])));
     $sale_date_esc = $conn->real_escape_string($s['sale_date']);
-    $txn_esc       = $conn->real_escape_string($s['order_id']);
-    $pos_row = $conn->query("SELECT COUNT(*) as n FROM sales WHERE DATE(sale_date)='$sale_day_esc' AND status='Completed' AND (sale_date < '$sale_date_esc' OR (sale_date = '$sale_date_esc' AND order_id <= '$txn_esc'))")->fetch_assoc();
+    $txn_esc       = $conn->real_escape_string($s['transaction_id']);
+    $pos_row = $conn->query("SELECT COUNT(*) as n FROM sales WHERE DATE(sale_date)='$sale_day_esc' AND status='Completed' AND (sale_date < '$sale_date_esc' OR (sale_date = '$sale_date_esc' AND transaction_id <= '$txn_esc'))")->fetch_assoc();
     $order_id_display = '#' . (1000 + (int)($pos_row ? $pos_row['n'] : 1));
     // Prepare details payload including conditional wallet fields (if present in DB)
     $details = $s;
@@ -7238,7 +7274,7 @@ if (!empty($r_sales_rows)):
 
   <?php endif; ?>
 
-  <!-- Transaction Details Modal -->
+  <!-- Transaction Details Modal: view payment and item breakdown for a selected sale -->
   <div class="overlay" id="transactionDetailModal">
     <div class="modal-box" style="width:750px;">
       <div class="modal-header">
@@ -7343,6 +7379,7 @@ if (!empty($r_sales_rows)):
       if (el) el.classList.remove('open');
     }
 
+    // Filter recent transactions table on user input
     function filterRecentTransactions() {
       var searchInput = document.getElementById('recent_transactions_search');
       var query = '';
@@ -7370,3 +7407,4 @@ if (!empty($r_sales_rows)):
 </body>
 
 </html>
+
