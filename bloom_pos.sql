@@ -50,7 +50,6 @@ CREATE TABLE `customers` (
   `created_by` varchar(50) DEFAULT NULL,
   `approved_by` varchar(50) DEFAULT NULL,
   `approved_at` datetime DEFAULT NULL,
-  `rejection_reason` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -205,7 +204,7 @@ CREATE TABLE `sales` (
 --
 
 CREATE TABLE `sale_items` ( 
-  `id` int(11) NOT NULL,
+  `saleitems_id` int(11) NOT NULL,
   `order_id` varchar(50) NOT NULL,
   `sku` varchar(50) NOT NULL,
   `quantity` int(11) NOT NULL DEFAULT 1,
