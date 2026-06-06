@@ -195,7 +195,9 @@ CREATE TABLE `sales` (
   `wallet_proof_image_url` varchar(255) DEFAULT NULL,
   `status` varchar(30) NOT NULL DEFAULT 'Completed',
   `employee_id` varchar(50) DEFAULT NULL,
-  `customer_id` int(11) DEFAULT NULL
+  `customer_id` int(11) DEFAULT NULL,
+  'discount_name' varchar(100) DEFAULT NULL,
+  'discount_type' varchar(50) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------

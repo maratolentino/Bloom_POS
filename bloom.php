@@ -4906,6 +4906,23 @@ function factorial(int $n): int
           default:
             disc = 0;
         }
+
+        const itemLevelDiscount = cart.reduce((sum, item) => {
+          const prod = allProducts.find(p => String(p.sku) === String(item.sku));
+          if (!prod) return sum;
+          const origPrice = parseFloat(prod.price) || 0;
+          const dtype = String(prod.discount_type || prod.discountType || '').toLowerCase();
+          const dval = parseFloat(prod.discount_value || prod.discountValue || 0) || 0;
+          let effective = origPrice;
+          if (dtype === 'percentage' || dtype === 'percent') {
+            effective = origPrice * (1 - dval / 100);
+          } else if (dtype === 'fixed') {
+            effective = Math.max(0, origPrice - dval);
+          }
+          return sum + Math.max(0, origPrice - effective) * (parseInt(item.qty, 10) || 0);
+        }, 0);
+
+        const displayDiscount = Math.max(0, disc + itemLevelDiscount);
         const taxable = sub - disc;
         const tax = taxable * TAX_RATE;
         const total = taxable + tax;
@@ -4923,27 +4940,28 @@ function factorial(int $n): int
           maximumFractionDigits: 2
         });
         document.getElementById('d_subtotal').innerHTML = fmt(sub);
-        document.getElementById('d_discount').innerHTML = disc > 0 ? '-' + fmt(disc) : '&#8212;';
+        document.getElementById('d_discount').innerHTML = displayDiscount > 0 ? '-' + fmt(displayDiscount) : '&#8212;';
         document.getElementById('d_points').innerHTML = pointsApplied > 0 ? '-' + fmt(pointsApplied) : '&#8212;';
         document.getElementById('d_tax').innerHTML = fmt(tax);
         document.getElementById('d_total').innerHTML = fmt(finalTotal);
         document.getElementById('modal_total').innerHTML = fmt(finalTotal);
 
-        document.getElementById('r_sub').innerHTML = fmt(sub);  
-        document.getElementById('r_disc').innerHTML = fmt(disc);
-        // Promotion display on receipt: show promotion name as its own row; Discount row shows the deduction amount
+        document.getElementById('r_sub').innerHTML = fmt(sub);
         const rPromoRow = document.getElementById('r_promo_row');
         const rPromoName = document.getElementById('r_promo_name');
         const rDisc = document.getElementById('r_disc');
-        if (promoId && promoId !== '0' && disc > 0) {
-          if (rPromoRow) rPromoRow.style.display = '';
-          if (rPromoName) rPromoName.textContent = pname || '';
-          if (rDisc) rDisc.innerHTML = '-' + fmt(disc);
-        } else {
-          if (rPromoRow) rPromoRow.style.display = 'none';
-          if (rPromoName) rPromoName.textContent = '';
-          if (rDisc) rDisc.innerHTML = fmt(0);
+        const showsPromo = promoId && promoId !== '0' && disc > 0;
+
+        if (rDisc) {
+          rDisc.innerHTML = displayDiscount > 0 ? '-' + fmt(displayDiscount) : fmt(0);
         }
+        if (rPromoRow) {
+          rPromoRow.style.display = showsPromo ? '' : 'none';
+        }
+        if (rPromoName) {
+          rPromoName.textContent = showsPromo ? (pname || '') : '';
+        }
+
         document.getElementById('r_points').innerHTML = pointsApplied > 0 ? '-' + fmt(pointsApplied) : '&#8369;0.00';
         document.getElementById('r_tax').innerHTML = fmt(tax);
         document.getElementById('r_total').innerHTML = fmt(finalTotal);
@@ -4958,9 +4976,9 @@ function factorial(int $n): int
         const fpid = document.getElementById('f_discount_id');
         const fpname = document.getElementById('f_discount_name');
         const fptype = document.getElementById('f_discount_type');
-        if (fpid) fpid.value = promoId;
-        if (fpname) fpname.value = pname;
-        if (fptype) fptype.value = ptype;
+        if (fpid) fpid.value = showsPromo ? promoId : '';
+        if (fpname) fpname.value = showsPromo ? pname : '';
+        if (fptype) fptype.value = showsPromo ? ptype : '';
       }
 
       function openPayModal() {
