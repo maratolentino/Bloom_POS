@@ -316,7 +316,7 @@ if (php_sapi_name() !== 'cli' && isset($_REQUEST['action']) && basename($_SERVER
 
         if ($action === 'get_history') {
             // Admin-only: return employee basic info and session_history rows as JSON
-            if (!isset($_SESSION['user_role']) || !in_array(strtolower($_SESSION['user_role']), ['admin', 'owner', 'manager'], true)) {
+            if (!isset($_SESSION['user_role']) || !in_array(strtolower($_SESSION['user_role']), ['admin', 'owner'], true)) {
                 http_response_code(403);
                 echo json_encode(['status' => 'error', 'message' => 'Forbidden']);
                 exit;
@@ -329,7 +329,7 @@ if (php_sapi_name() !== 'cli' && isset($_REQUEST['action']) && basename($_SERVER
             }
 
             // fetch employee info
-            $stmt = $conn->prepare('SELECT employee_id, full_name, role, job_role, photo_url FROM employees WHERE employee_id = ? LIMIT 1');
+            $stmt = $conn->prepare('SELECT employee_id, full_name, role, photo_url FROM employees WHERE employee_id = ? LIMIT 1');
             $stmt->bind_param('s', $employeeId);
             $stmt->execute();
             $res = $stmt->get_result();

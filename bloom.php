@@ -475,7 +475,7 @@ if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && $is_admin) 
   $name     = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : "";
   $role     = "Cashier"; // New accounts can only be Cashier; Admin creation via form is disabled
   $passcode = isset($_POST["passcode"])  ? $_POST["passcode"]        : "";
-  $job_role = (strcasecmp($role, "Admin") === 0) ? "Manager" : "Cashier"; // strcasecmp() for case-insensitive role check
+  // `job_role` removed: rely solely on `role` which will be 'Admin' or 'Cashier'
 
   // Validate name using the same function as profile updates to ensure consistent validation rules (characters and length). 
   $nameCheck = validateStaffName($name);
@@ -511,10 +511,10 @@ if ($page === "register" && $_SERVER["REQUEST_METHOD"] === "POST" && $is_admin) 
       move_uploaded_file($_FILES["emp_photo"]["tmp_name"], $photo_path);
     }
 
-    // Use prepared statement to safely insert the new employee record into the database. 
-    // The employee ID, name, role, passcode, job role, and photo URL are all stored in the employees table.
-    $stmt = $conn->prepare("INSERT INTO employees (employee_id, full_name, role, passcode, job_role, photo_url) VALUES (?,?,?,?,?,?)");
-    $stmt->bind_param("ssssss", $emp_id, $name, $role, $passcode, $job_role, $photo_path);
+    // Use prepared statement to safely insert the new employee record into the database.
+    // We no longer store `job_role` — only `role` is kept (Admin or Cashier).
+    $stmt = $conn->prepare("INSERT INTO employees (employee_id, full_name, role, passcode, photo_url) VALUES (?,?,?,?,?)");
+    $stmt->bind_param("sssss", $emp_id, $name, $role, $passcode, $photo_path);
     //                 ^^^^^^ 6 s's — one per ? placeholder
 
     if ($stmt->execute()) {
@@ -1229,7 +1229,6 @@ if ($page === "employees" && $_SESSION["user_role"] === "Admin") {
     $id       = $conn->real_escape_string(isset($_POST["employee_id"]) ? $_POST["employee_id"] : "");
     $name     = $conn->real_escape_string(isset($_POST["full_name"])   ? $_POST["full_name"]   : "");
     $role     = $conn->real_escape_string(isset($_POST["role"])        ? $_POST["role"]        : "Cashier");
-    $job_role = ($role === "Admin") ? "Manager" : "Cashier";
     
     // Employee photo upload
     $photo_sql  = "";
@@ -1241,7 +1240,7 @@ if ($page === "employees" && $_SESSION["user_role"] === "Admin") {
       move_uploaded_file($_FILES["emp_photo"]["tmp_name"], $photo_path);
       $photo_sql = ", photo_url='$photo_path'";
     }
-    $conn->query("UPDATE employees SET full_name='$name',role='$role',job_role='$job_role'$photo_sql WHERE employee_id='$id'");
+    $conn->query("UPDATE employees SET full_name='$name',role='$role'$photo_sql WHERE employee_id='$id'");
     // Keep session in sync if editing own profile
     if ($id === $_SESSION["user_id"]) {
       $_SESSION["user_name"] = $name;
@@ -6884,7 +6883,7 @@ function factorial(int $n): int
                       <?= htmlspecialchars($emp['full_name'], ENT_QUOTES, 'UTF-8') ?>
                     </div>
                   <div style="font-size:12px; color:var(--text-3); margin-top:2px;">
-                    <?= $emp['employee_id'] ?> &middot; <?= $emp['job_role'] ?>
+                    <?= $emp['employee_id'] ?> &middot; <?= $emp['role'] ?>
                   </div>
                 </div>
                 <div style="text-align:right;">

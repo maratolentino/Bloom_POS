@@ -35,7 +35,7 @@ if (!isset($_SESSION['__bloom_initialized'])) {
 }
 
 // ── Inactivity timeout check (10 seconds)
-$INACTIVITY_TIMEOUT = 10; // seconds
+$INACTIVITY_TIMEOUT = 60; // seconds
 if (isset($_SESSION['user_id']) && $_SESSION['user_id'] !== '') {
     $current_time = time();
     

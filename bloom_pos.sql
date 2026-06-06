@@ -95,12 +95,12 @@ CREATE TABLE `discounts` (
 CREATE TABLE `employees` (
   `employee_id` varchar(50) NOT NULL,
   `full_name` varchar(150) NOT NULL,
-  `role` varchar(50) NOT NULL DEFAULT 'cashier',
-  `job_role` varchar(100) DEFAULT NULL,
+  `role` varchar(16) NOT NULL DEFAULT 'Cashier',
   `passcode` varchar(255) NOT NULL,
   `photo_url` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`employee_id`),
-  CONSTRAINT `chk_employee_id_prefix` CHECK (LEFT(`employee_id`,3) = 'EMP')
+  CONSTRAINT `chk_employee_id_prefix` CHECK (LEFT(`employee_id`,3) = 'EMP'),
+  CONSTRAINT `chk_employees_role` CHECK (`role` IN ('Admin','Cashier'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
