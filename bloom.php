@@ -401,17 +401,17 @@ if ($historyCheck && $historyCheck->num_rows === 0) {
   $conn->query("CREATE TABLE customer_approval_history (approval_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, customer_id INT NOT NULL, action VARCHAR(32) NOT NULL, by_employee_id VARCHAR(50) NULL, note VARCHAR(255) NULL, ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
-// Ensure promotion tracking columns exist in sales table
-$promoCols = ['promotion_id', 'promotion_name', 'promotion_type'];
+// Ensure discount tracking columns exist in sales table
+$promoCols = ['discount_id', 'discount_name', 'discount_type'];
 foreach ($promoCols as $col) {
   $colCheck = $conn->query("SHOW COLUMNS FROM sales LIKE '$col'");
   if ($colCheck && $colCheck->num_rows === 0) {
-    if ($col === 'promotion_id') {
-      $conn->query("ALTER TABLE sales ADD COLUMN promotion_id INT NULL DEFAULT NULL");
-    } elseif ($col === 'promotion_type') {
-      $conn->query("ALTER TABLE sales ADD COLUMN promotion_type VARCHAR(50) NULL DEFAULT NULL");
+    if ($col === 'discount_id') {
+      $conn->query("ALTER TABLE sales ADD COLUMN discount_id INT NULL DEFAULT NULL");
+    } elseif ($col === 'discount_type') {
+      $conn->query("ALTER TABLE sales ADD COLUMN discount_type VARCHAR(50) NULL DEFAULT NULL");
     } else {
-      $conn->query("ALTER TABLE sales ADD COLUMN promotion_name VARCHAR(100) NULL DEFAULT NULL");
+      $conn->query("ALTER TABLE sales ADD COLUMN discount_name VARCHAR(100) NULL DEFAULT NULL");
     }
   }
 }
@@ -679,21 +679,21 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     $hasWalletCols = true;
   }
 
-  // Capture promotion details
-  $promotion_id = (isset($_POST["promotion_id"]) && $_POST["promotion_id"] !== "") ? (int)$_POST["promotion_id"] : null;
-  $promotion_name = (isset($_POST["promotion_name"]) && $_POST["promotion_name"] !== "") ? $conn->real_escape_string($_POST["promotion_name"]) : null;
-  $promotion_type = (isset($_POST["promotion_type"]) && $_POST["promotion_type"] !== "") ? $conn->real_escape_string($_POST["promotion_type"]) : null;
+  // Capture discount details
+  $discount_id = (isset($_POST["discount_id"]) && $_POST["discount_id"] !== "") ? (int)$_POST["discount_id"] : null;
+  $discount_name = (isset($_POST["discount_name"]) && $_POST["discount_name"] !== "") ? $conn->real_escape_string($_POST["discount_name"]) : null;
+  $discount_type = (isset($_POST["discount_type"]) && $_POST["discount_type"] !== "") ? $conn->real_escape_string($_POST["discount_type"]) : null;
 
   // Insert the sale record into the database, including wallet payment details if applicable.
   if ($hasWalletCols) {
-    $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+    $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,discount_id,discount_name,discount_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
     if ($stmt) {
-      $stmt->bind_param("ssdddsdsssisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
+      $stmt->bind_param("ssdddsdsssisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $discount_id, $discount_name, $discount_type, $employee_id, $customer_id);
     } // ssdddsdsssisssi = string, string, double, double, double, string, double, string, string, string, int, string, string, int, int
   } else {
-    $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,promotion_id,promotion_name,promotion_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+    $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,discount_id,discount_name,discount_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
     if ($stmt) {
-      $stmt->bind_param("ssdddsdisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $promotion_id, $promotion_name, $promotion_type, $employee_id, $customer_id);
+      $stmt->bind_param("ssdddsdisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $discount_id, $discount_name, $discount_type, $employee_id, $customer_id);
     }
   }
 
@@ -4199,9 +4199,9 @@ function factorial(int $n): int
           <input type="hidden" name="discount_amount" id="f_disc">
           <input type="hidden" name="points_redeemed" id="f_points">
           <input type="hidden" name="customer_id" id="f_customer">
-          <input type="hidden" name="promotion_id" id="f_promotion_id">
-          <input type="hidden" name="promotion_name" id="f_promotion_name">
-          <input type="hidden" name="promotion_type" id="f_promotion_type">
+          <input type="hidden" name="discount_id" id="f_discount_id">
+          <input type="hidden" name="discount_name" id="f_discount_name">
+          <input type="hidden" name="discount_type" id="f_discount_type">
           <input type="hidden" name="bundle_name" id="f_bundle_name">
           <input type="hidden" name="bundle_main" id="f_bundle_main">
           <input type="hidden" name="bundle_fillers" id="f_bundle_fillers">
@@ -4892,10 +4892,10 @@ function factorial(int $n): int
         document.getElementById('f_points').value = pointsApplied.toFixed(2);
         document.getElementById('f_cart').value = JSON.stringify(cart);
         document.getElementById('f_customer').value = getSelectedCustomerValue();
-        // set promotion hidden fields
-        const fpid = document.getElementById('f_promotion_id');
-        const fpname = document.getElementById('f_promotion_name');
-        const fptype = document.getElementById('f_promotion_type');
+        // set discount hidden fields
+        const fpid = document.getElementById('f_discount_id');
+        const fpname = document.getElementById('f_discount_name');
+        const fptype = document.getElementById('f_discount_type');
         if (fpid) fpid.value = promoId;
         if (fpname) fpname.value = pname;
         if (fptype) fptype.value = ptype;
