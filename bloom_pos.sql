@@ -49,7 +49,7 @@ CREATE TABLE `customers` (
   `approved` tinyint(1) NOT NULL DEFAULT 1,
   `created_by` varchar(50) DEFAULT NULL,
   `approved_by` varchar(50) DEFAULT NULL,
-  `approved_at` datetime DEFAULT NULL,
+  `approved_at` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -186,6 +186,7 @@ CREATE TABLE `sales` (
   `sale_date` datetime NOT NULL DEFAULT current_timestamp(),
   `total_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
   `tax_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `discount_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
   `discount_id` int(11) DEFAULT NULL,
   `payment_method` varchar(50) DEFAULT NULL,
   `amount_tendered` decimal(10,2) DEFAULT NULL,

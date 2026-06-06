@@ -685,28 +685,91 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
   $discount_type = (isset($_POST["discount_type"]) && $_POST["discount_type"] !== "") ? $conn->real_escape_string($_POST["discount_type"]) : null;
 
   // Insert the sale record into the database, including wallet payment details if applicable.
-  if ($hasWalletCols) {
-    $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,discount_id,discount_name,discount_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
-    if ($stmt) {
-      $stmt->bind_param("ssdddsdsssisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $discount_id, $discount_name, $discount_type, $employee_id, $customer_id);
-    } // ssdddsdsssisssi = string, string, double, double, double, string, double, string, string, string, int, string, string, int, int
-  } else {
-    $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,discount_id,discount_name,discount_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
-    if ($stmt) {
-      $stmt->bind_param("ssdddsdisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $discount_id, $discount_name, $discount_type, $employee_id, $customer_id);
+  // Use a DB transaction and prepared statements so we can rollback on any failure.
+  $conn->begin_transaction();
+  try {
+    if ($hasWalletCols) {
+      $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,discount_id,discount_name,discount_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+      if ($stmt) {
+        $stmt->bind_param("ssdddsdsssisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $discount_id, $discount_name, $discount_type, $employee_id, $customer_id);
+      }
+    } else {
+      $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,discount_id,discount_name,discount_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+      if ($stmt) {
+        $stmt->bind_param("ssdddsdisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $discount_id, $discount_name, $discount_type, $employee_id, $customer_id);
+      }
     }
-  }
 
-    // After inserting the sale, we loop through each item in the cart and insert it into the sale_items table.
-    if ($stmt && $stmt->execute()) {
+    // Execute sale insert
+    if (!($stmt && $stmt->execute())) {
+      $err = $stmt ? $stmt->error : $conn->error;
+      $conn->rollback();
+      if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>'Sale insert failed: '.$err]); exit; }
+      $_SESSION['payment_error'] = 'Sale recording failed: ' . $err;
+      header('Location: ?page=checkout');
+      exit;
+    }
+
+    // Prepare statements for sale_items insert and inventory update
+    $ins_item = $conn->prepare("INSERT INTO sale_items (order_id,sku,quantity,price_at_time,subtotal) VALUES (?,?,?,?,?)");
+    $upd_stock = $conn->prepare("UPDATE inventory SET stock_qty = stock_qty - ? WHERE sku = ? AND stock_qty >= ?");
+    if (!$ins_item || !$upd_stock) {
+      $err = $conn->error;
+      $conn->rollback();
+      if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>'DB prepare failed: '.$err]); exit; }
+      $_SESSION['payment_error'] = 'Database error: ' . $err;
+      header('Location: ?page=checkout');
+      exit;
+    }
+
     foreach ($cart_data as $item) {
-      $sku   = $conn->real_escape_string($item["sku"]);
+      $sku   = (string)$item["sku"];
       $qty   = (int)$item["qty"];
       $price = floatval($item["price"]);
       $sub   = $price * $qty;
-      $conn->query("INSERT INTO sale_items (order_id,sku,quantity,price_at_time,subtotal) VALUES ('$order_id','$sku',$qty,$price,$sub)");
-      $conn->query("UPDATE inventory SET stock_qty = stock_qty - $qty WHERE sku = '$sku' AND stock_qty >= $qty");
+
+      $ins_item->bind_param('ssidd', $order_id, $sku, $qty, $price, $sub);
+      if (!$ins_item->execute()) {
+        $err = $ins_item->error;
+        $conn->rollback();
+        if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>'Insert item failed: '.$err]); exit; }
+        $_SESSION['payment_error'] = 'Failed to record sale item: ' . $err;
+        header('Location: ?page=checkout');
+        exit;
+      }
+
+      $upd_stock->bind_param('isi', $qty, $sku, $qty);
+      if (!$upd_stock->execute()) {
+        $err = $upd_stock->error;
+        $conn->rollback();
+        if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>'Stock update failed: '.$err]); exit; }
+        $_SESSION['payment_error'] = 'Failed to update inventory: ' . $err;
+        header('Location: ?page=checkout');
+        exit;
+      }
+      // If no rows were affected the stock was insufficient
+      if ($upd_stock->affected_rows === 0) {
+        $conn->rollback();
+        $msg = "Insufficient stock for SKU {$sku}";
+        if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>$msg]); exit; }
+        $_SESSION['payment_error'] = $msg;
+        header('Location: ?page=checkout');
+        exit;
+      }
     }
+
+    // All good — commit transaction
+    $conn->commit();
+  } catch (Exception $e) {
+    // Ensure any failure triggers a rollback and surface an error to the caller
+    if ($conn->errno === 0) { /* no-op, connection may not have error info */ }
+    $conn->rollback();
+    $err = $e->getMessage();
+    if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>'Transaction failed: '.$err]); exit; }
+    $_SESSION['payment_error'] = 'Transaction failed: ' . $err;
+    header('Location: ?page=checkout');
+    exit;
+  }
     if ($customer_id) {
       // Deduct redeemed points if provided (points_redeemed is in PHP float format)
       $raw_points_used = isset($_POST['points_redeemed']) ? $_POST['points_redeemed'] : 0;
@@ -774,7 +837,6 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     }
     header("Location: $redirect_url");
     exit;
-  }
 }
 
 // ── Inventory CRUD ────────────────────────────────────────────
