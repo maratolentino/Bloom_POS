@@ -371,28 +371,39 @@ if ($colCheckApproved && $colCheckApproved->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN approved TINYINT(1) NOT NULL DEFAULT 1");
 }
 
-// Ensure `created_by`, `approved_by`, `approved_at`, and `rejection_reason` columns exist
+// Ensure `created_by`, `approved_by`, and `approved_at` columns exist for customer approval tracking
 $colCheckCreatedBy = $conn->query("SHOW COLUMNS FROM customers LIKE 'created_by'");
 if ($colCheckCreatedBy && $colCheckCreatedBy->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN created_by VARCHAR(50) NULL DEFAULT NULL");
 }
 
-// Ensure `approved_by`, `approved_at`, and `rejection_reason` columns exist to support approval workflow for customer accounts.
 $colCheckApprovedBy = $conn->query("SHOW COLUMNS FROM customers LIKE 'approved_by'");
 if ($colCheckApprovedBy && $colCheckApprovedBy->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN approved_by VARCHAR(50) NULL DEFAULT NULL");
 }
 
-// Ensure `approved_by`, `approved_at`, and `rejection_reason` columns exist to support approval workflow for customer accounts.
 $colCheckApprovedAt = $conn->query("SHOW COLUMNS FROM customers LIKE 'approved_at'");
 if ($colCheckApprovedAt && $colCheckApprovedAt->num_rows === 0) {
   $conn->query("ALTER TABLE customers ADD COLUMN approved_at DATETIME NULL DEFAULT NULL");
 }
 
-// Ensure `rejection_reason` column exists to support recording the reason for rejecting a customer account during the approval process.
+$colCheckCustId = $conn->query("SHOW COLUMNS FROM customers LIKE 'customer_id'");
+if ($colCheckCustId && $colCheckCustId->num_rows > 0) {
+  $custIdRow = $colCheckCustId->fetch_assoc();
+  if ($custIdRow && stripos($custIdRow['Extra'] ?? '', 'auto_increment') === false) {
+    // Fix any existing zero-valued customer IDs before enabling AUTO_INCREMENT
+    $zeroRows = $conn->query("SELECT COUNT(*) AS zero_count FROM customers WHERE customer_id = 0");
+    if ($zeroRows && ($zeroRow = $zeroRows->fetch_assoc()) && (int)$zeroRow['zero_count'] > 0) {
+      $conn->query("SET @max_id = (SELECT IFNULL(MAX(customer_id), 0) FROM customers)");
+      $conn->query("UPDATE customers SET customer_id = (@max_id := @max_id + 1) WHERE customer_id = 0");
+    }
+    $conn->query("ALTER TABLE customers MODIFY COLUMN customer_id INT(11) NOT NULL AUTO_INCREMENT");
+  }
+}
+
 $colCheckRej = $conn->query("SHOW COLUMNS FROM customers LIKE 'rejection_reason'");
-if ($colCheckRej && $colCheckRej->num_rows === 0) {
-  $conn->query("ALTER TABLE customers ADD COLUMN rejection_reason VARCHAR(255) NULL DEFAULT NULL");
+if ($colCheckRej && $colCheckRej->num_rows > 0) {
+  $conn->query("ALTER TABLE customers DROP COLUMN rejection_reason");
 }
 
 // Ensure approval history table exists
@@ -1169,7 +1180,22 @@ if ($page === "crm") {
     if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin') {
       // Admin creates an approved customer
       $now = date('Y-m-d H:i:s');
-      $conn->query("INSERT INTO customers (full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by,approved_by,approved_at) VALUES ('$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 1, '$creator', '$creator', '$now')");
+      $insertSql = "INSERT INTO customers (full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by,approved_by,approved_at) VALUES ('$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 1, '$creator', '$creator', '$now')";
+      try {
+        $conn->query($insertSql);
+      } catch (mysqli_sql_exception $e) {
+        if ($e->getCode() === 1062) {
+          $maxRow = $conn->query("SELECT IFNULL(MAX(customer_id),0) AS max_id FROM customers");
+          $maxId = 0;
+          if ($maxRow && $maxData = $maxRow->fetch_assoc()) {
+            $maxId = (int)$maxData['max_id'];
+          }
+          $newCustomerId = $maxId + 1;
+          $conn->query("INSERT INTO customers (customer_id,full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by,approved_by,approved_at) VALUES ($newCustomerId,'$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 1, '$creator', '$creator', '$now')");
+        } else {
+          throw $e;
+        }
+      }
       $cid = $conn->insert_id;
       if ($cid) {
         $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($cid,'created_and_approved','$creator','Created by admin and auto-approved')");
@@ -1178,7 +1204,22 @@ if ($page === "crm") {
 
     else {
       // Cashier creates a pending customer
-      $conn->query("INSERT INTO customers (full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by) VALUES ('$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 0, '$creator')");
+      $insertSql = "INSERT INTO customers (full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by) VALUES ('$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 0, '$creator')";
+      try {
+        $conn->query($insertSql);
+      } catch (mysqli_sql_exception $e) {
+        if ($e->getCode() === 1062) {
+          $maxRow = $conn->query("SELECT IFNULL(MAX(customer_id),0) AS max_id FROM customers");
+          $maxId = 0;
+          if ($maxRow && $maxData = $maxRow->fetch_assoc()) {
+            $maxId = (int)$maxData['max_id'];
+          }
+          $newCustomerId = $maxId + 1;
+          $conn->query("INSERT INTO customers (customer_id,full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by) VALUES ($newCustomerId,'$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 0, '$creator')");
+        } else {
+          throw $e;
+        }
+      }
       $cid = $conn->insert_id;
       if ($cid) {
         $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($cid,'created_pending','$creator','Created by cashier, pending admin approval')");
@@ -1264,7 +1305,7 @@ if ($page === "crm") {
     $id = (int)(isset($_POST["customer_id"]) ? $_POST["customer_id"] : 0);
     $admin = $conn->real_escape_string($_SESSION['user_id']);
     $now = date('Y-m-d H:i:s');
-    $conn->query("UPDATE customers SET approved=1, approved_by='$admin', approved_at='$now', rejection_reason=NULL WHERE customer_id=$id");
+    $conn->query("UPDATE customers SET approved=1, approved_by='$admin', approved_at='$now' WHERE customer_id=$id");
     $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($id,'approved','$admin','Approved by admin')");
     header("Location: ?page=crm");
     exit;
@@ -1273,11 +1314,10 @@ if ($page === "crm") {
   // Reject a pending customer (Admin only)
   if (isset($_POST["reject_customer"]) && isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin') {
     $id = (int)(isset($_POST["customer_id"]) ? $_POST["customer_id"] : 0);
-    $reason = $conn->real_escape_string(isset($_POST['rejection_reason']) ? $_POST['rejection_reason'] : 'Rejected by admin');
     $admin = $conn->real_escape_string($_SESSION['user_id']);
     $now = date('Y-m-d H:i:s');
-    $conn->query("UPDATE customers SET approved=2, approved_by='$admin', approved_at='$now', rejection_reason='$reason' WHERE customer_id=$id");
-    $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($id,'rejected','$admin','" . $reason . "')");
+    $conn->query("UPDATE customers SET approved=2, approved_by='$admin', approved_at='$now' WHERE customer_id=$id");
+    $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($id,'rejected','$admin','Rejected by admin')");
     header("Location: ?page=crm");
     exit;
   }
@@ -6730,9 +6770,8 @@ function factorial(int $n): int
                                     <input type="hidden" name="customer_id" value="<?= $c['customer_id'] ?>">
                                     <button type="submit" name="approve_customer" class="btn btn-sm btn-primary">Approve</button>
                                   </form>
-                                  <form data-prompt="Enter rejection reason (optional):" data-prompt-target=".rej_reason" method="POST" action="?page=crm" style="margin: 0;">
+                                  <form method="POST" action="?page=crm" style="margin: 0;">
                                     <input type="hidden" name="customer_id" value="<?= $c['customer_id'] ?>">
-                                    <input type="hidden" name="rejection_reason" value="" class="rej_reason">
                                     <button type="submit" name="reject_customer" class="btn btn-sm btn-ghost" style="color: var(--red); border: 1px solid rgba(168, 50, 50, .12);">Reject</button>
                                   </form>
                                 <?php endif; ?>

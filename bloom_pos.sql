@@ -38,7 +38,7 @@ CREATE TABLE `categories` (
 --
 
 CREATE TABLE `customers` (
-  `customer_id` int(11) NOT NULL,
+  `customer_id` int(11) NOT NULL AUTO_INCREMENT,
   `full_name` varchar(150) NOT NULL,
   `contact_info` varchar(150) DEFAULT NULL,
   `photo_url` varchar(255) DEFAULT NULL,
