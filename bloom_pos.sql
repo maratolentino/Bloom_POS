@@ -154,7 +154,7 @@ CREATE TABLE `showcase_bundles` (
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`showcase_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
- 
+
 -- --------------------------------------------------------
 
 --
@@ -187,7 +187,7 @@ CREATE TABLE `sales` (
   `sale_date` datetime NOT NULL DEFAULT current_timestamp(),
   `total_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
   `tax_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `discount_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `discount_id` int(11) DEFAULT NULL,
   `payment_method` varchar(50) DEFAULT NULL,
   `amount_tendered` decimal(10,2) DEFAULT NULL,
   `wallet_contact_number` varchar(50) DEFAULT NULL,
@@ -253,7 +253,8 @@ ALTER TABLE `inventory`
 ALTER TABLE `sales`
   ADD PRIMARY KEY (`order_id`),
   ADD KEY `fk_sale_emp` (`employee_id`),
-  ADD KEY `fk_sale_cust` (`customer_id`);
+  ADD KEY `fk_sale_cust` (`customer_id`),
+  ADD KEY `fk_sale_disc` (`discount_id`);
 
 --
 -- Indexes for table `sale_items`
@@ -328,7 +329,8 @@ ALTER TABLE `showcase_sales`
 --
 ALTER TABLE `sales`
   ADD CONSTRAINT `fk_sale_cust` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`customer_id`) ON DELETE SET NULL,
-  ADD CONSTRAINT `fk_sale_emp` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL;
+  ADD CONSTRAINT `fk_sale_emp` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `fk_sale_disc` FOREIGN KEY (`discount_id`) REFERENCES `discounts` (`discount_id`) ON DELETE SET NULL;
 
 --
 -- Constraints for table `sale_items`
