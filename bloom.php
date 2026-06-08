@@ -1180,7 +1180,7 @@ if ($page === "crm") {
     if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Admin') {
       // Admin creates an approved customer
       $now = date('Y-m-d H:i:s');
-      $insertSql = "INSERT INTO customers (full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by,approved_by,approved_at) VALUES ('$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 1, '$creator', '$creator', '$now')";
+      $insertSql = "INSERT INTO customers (full_name,contact_email,contact_number,photo_url,member_since,approved,created_by,approved_by,approved_at) VALUES ('$n','$c_email','$c_phone','$photo_path',$member_since_sql,1,'$creator','$creator','$now')";
       try {
         $conn->query($insertSql);
       } catch (mysqli_sql_exception $e) {
@@ -1191,7 +1191,7 @@ if ($page === "crm") {
             $maxId = (int)$maxData['max_id'];
           }
           $newCustomerId = $maxId + 1;
-          $conn->query("INSERT INTO customers (customer_id,full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by,approved_by,approved_at) VALUES ($newCustomerId,'$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 1, '$creator', '$creator', '$now')");
+          $conn->query("INSERT INTO customers (customer_id,full_name,contact_email,contact_number,photo_url,member_since,approved,created_by,approved_by,approved_at) VALUES ($newCustomerId,'$n','$c_email','$c_phone','$photo_path',$member_since_sql,1,'$creator','$creator','$now')");
         } else {
           throw $e;
         }
@@ -1204,7 +1204,7 @@ if ($page === "crm") {
 
     else {
       // Cashier creates a pending customer
-      $insertSql = "INSERT INTO customers (full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by) VALUES ('$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 0, '$creator')";
+      $insertSql = "INSERT INTO customers (full_name,contact_email,contact_number,photo_url,member_since,approved,created_by) VALUES ('$n','$c_email','$c_phone','$photo_path',$member_since_sql,0,'$creator')";
       try {
         $conn->query($insertSql);
       } catch (mysqli_sql_exception $e) {
@@ -1215,7 +1215,7 @@ if ($page === "crm") {
             $maxId = (int)$maxData['max_id'];
           }
           $newCustomerId = $maxId + 1;
-          $conn->query("INSERT INTO customers (customer_id,full_name,contact_info,contact_email,contact_number,photo_url,member_since,approved,created_by) VALUES ($newCustomerId,'$n','$c_combined','$c_email','$c_phone','$photo_path', $member_since_sql, 0, '$creator')");
+          $conn->query("INSERT INTO customers (customer_id,full_name,contact_email,contact_number,photo_url,member_since,approved,created_by) VALUES ($newCustomerId,'$n','$c_email','$c_phone','$photo_path',$member_since_sql,0,'$creator')");
         } else {
           throw $e;
         }
@@ -1294,7 +1294,7 @@ if ($page === "crm") {
       $ms = $conn->real_escape_string($_POST['member_since']);
       $created_sql = ", member_since='$ms'";
     }
-    $conn->query("UPDATE customers SET full_name='$n',contact_info='$c_combined',contact_email='$c_email',contact_number='$c_phone'$photo_sql$created_sql WHERE customer_id=$id");
+    $conn->query("UPDATE customers SET full_name='$n',contact_email='$c_email',contact_number='$c_phone'$photo_sql$created_sql WHERE customer_id=$id");
     header("Location: ?page=crm");
     exit;
   }
