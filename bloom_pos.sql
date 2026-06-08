@@ -40,7 +40,6 @@ CREATE TABLE categories (
 CREATE TABLE customers (
   customer_id int(11) NOT NULL AUTO_INCREMENT,
   full_name varchar(150) NOT NULL,
-  contact_info varchar(150) DEFAULT NULL,
   photo_url varchar(255) DEFAULT NULL,
   loyalty_points int(11) NOT NULL DEFAULT 0,
   member_since datetime DEFAULT NULL,
@@ -95,6 +94,8 @@ CREATE TABLE employees (
   role varchar(16) NOT NULL DEFAULT 'Cashier',
   passcode varchar(255) NOT NULL,
   photo_url varchar(255) DEFAULT NULL,
+  created_at datetime NOT NULL DEFAULT current_timestamp(),
+  created_by varchar(50) DEFAULT NULL,
   PRIMARY KEY (employee_id),
   CONSTRAINT chk_employee_id_prefix CHECK (LEFT(employee_id,3) = 'EMP'),
   CONSTRAINT chk_employees_role CHECK (role IN ('Admin','Cashier'))
