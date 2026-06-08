@@ -49,7 +49,8 @@ CREATE TABLE `customers` (
   `approved` tinyint(1) NOT NULL DEFAULT 1,
   `created_by` varchar(50) DEFAULT NULL,
   `approved_by` varchar(50) DEFAULT NULL,
-  `approved_at` datetime DEFAULT NULL
+  `approved_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`customer_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -196,8 +197,8 @@ CREATE TABLE `sales` (
   `status` varchar(30) NOT NULL DEFAULT 'Completed',
   `employee_id` varchar(50) DEFAULT NULL,
   `customer_id` int(11) DEFAULT NULL,
-  'discount_name' varchar(100) DEFAULT NULL,
-  'discount_type' varchar(50) DEFAULT NULL
+  `discount_name` varchar(100) DEFAULT NULL,
+  `discount_type` varchar(50) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -206,7 +207,7 @@ CREATE TABLE `sales` (
 -- Table structure for table `sale_items`
 --
 
-CREATE TABLE `sale_items` ( 
+CREATE TABLE `sale_items` (
   `saleitems_id` int(11) NOT NULL,
   `order_id` varchar(50) NOT NULL,
   `sku` varchar(50) NOT NULL,
@@ -220,12 +221,6 @@ CREATE TABLE `sale_items` (
 --
 ALTER TABLE `categories`
   ADD PRIMARY KEY (`category_id`);
-
---
--- Indexes for table `customers`
---
-ALTER TABLE `customers`
-  ADD PRIMARY KEY (`customer_id`);
 
 --
 -- Indexes for table `customer_approval_history`
@@ -262,7 +257,7 @@ ALTER TABLE `sales`
 -- Indexes for table `sale_items`
 --
 ALTER TABLE `sale_items`
-  ADD PRIMARY KEY (`id`),
+  ADD PRIMARY KEY (`saleitems_id`),
   ADD KEY `fk_si_sale` (`order_id`),
   ADD KEY `fk_si_sku` (`sku`);
 
@@ -298,7 +293,7 @@ ALTER TABLE `discounts`
 -- AUTO_INCREMENT for table `sale_items`
 --
 ALTER TABLE `sale_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `saleitems_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- Constraints for dumped tables
