@@ -1198,7 +1198,7 @@ if ($page === "crm") {
       }
       $cid = $conn->insert_id;
       if ($cid) {
-        $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($cid,'created_and_approved','$creator','Created by admin and auto-approved')");
+        $conn->query("INSERT INTO customer_approval_history (customer_id,action,employee_id,note) VALUES ($cid,'created_and_approved','$creator','Created by admin and auto-approved')");
       }
     } 
 
