@@ -11,7 +11,7 @@ date_default_timezone_set("Asia/Manila");
 require_once __DIR__ . '/Inventory.inc.php';
 $auth_error = "";
 $reg_error = "";
-$store_info = array("name"=>"Bloom POS","address"=>"Calamba, Laguna","contact"=>"0912-345-6789","tax_rate"=>0.12);
+$store_info = array("name" => "Bloom POS", "address" => "Calamba, Laguna", "contact" => "0912-345-6789", "tax_rate" => 0.12);
 $accepted_payments = str_getcsv("Cash,GCash,Maya,Credit/Debit Card", ',', '"', '\\');
 $paymentsRef = &$accepted_payments;
 $paymentKeys = array_keys($accepted_payments);
@@ -29,7 +29,7 @@ if (!$loggedIn && !in_array($page, ['login', 'register'], true)) {
 if (!class_exists('mysqli')) {
   if (php_sapi_name() === 'cli-server') {
     header('Content-Type: application/json');
-    echo json_encode(['status'=>'error','message'=>'PHP mysqli extension is not available in this PHP binary. Enable extension=mysqli in php.ini or run under XAMPP/Apache.']);
+    echo json_encode(['status' => 'error', 'message' => 'PHP mysqli extension is not available in this PHP binary. Enable extension=mysqli in php.ini or run under XAMPP/Apache.']);
     exit;
   } else {
     die('PHP mysqli extension is not available. Enable extension=mysqli in php.ini or run under XAMPP/Apache.');
@@ -40,7 +40,7 @@ if (!class_exists('mysqli')) {
 $conn = new mysqli('127.0.0.1', 'root', '', 'bloom_pos');
 if ($conn->connect_error) {
   header('Content-Type: application/json');
-  echo json_encode(['status'=>'error','message'=>'DB connection failed: '.$conn->connect_error]);
+  echo json_encode(['status' => 'error', 'message' => 'DB connection failed: ' . $conn->connect_error]);
   exit;
 }
 
@@ -81,17 +81,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
       // If adding the quantity would exceed stock, return error. Otherwise, add to cart and return updated cart info.
       if ($stockQty === null) {
         http_response_code(400);
-        echo json_encode(['status'=>'error','message'=>'Invalid product SKU']);
+        echo json_encode(['status' => 'error', 'message' => 'Invalid product SKU']);
         exit;
       }
       if ($currentQty + $qty > (int)$stockQty) {
         http_response_code(400);
-        echo json_encode(['status'=>'error','message'=>'Max stock reached']);
+        echo json_encode(['status' => 'error', 'message' => 'Max stock reached']);
         exit;
       }
       cart_add($sku, $qty);
       header('X-Session-Id: ' . session_id());
-      echo json_encode(['status'=>'ok','cart'=>cart_get(),'count'=>cart_count_items()]);
+      echo json_encode(['status' => 'ok', 'cart' => cart_get(), 'count' => cart_count_items()]);
       exit;
     }
     // Set and Remove actions use cart_set and cart_remove which already handle stock checks and quantity logic, so we just call them directly with the provided SKU and quantity.
@@ -111,17 +111,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
       // If setting the quantity would exceed stock, return error. 
       if ($stockQty === null) {
         http_response_code(400);
-        echo json_encode(['status'=>'error','message'=>'Invalid product SKU']);
+        echo json_encode(['status' => 'error', 'message' => 'Invalid product SKU']);
         exit;
       }
       if ($qty > (int)$stockQty) {
         http_response_code(400);
-        echo json_encode(['status'=>'error','message'=>'Max stock reached']);
+        echo json_encode(['status' => 'error', 'message' => 'Max stock reached']);
         exit;
       }
       cart_set($sku, $qty);
       header('X-Session-Id: ' . session_id());
-      echo json_encode(['status'=>'ok','cart'=>cart_get(),'count'=>cart_count_items()]);
+      echo json_encode(['status' => 'ok', 'cart' => cart_get(), 'count' => cart_count_items()]);
       exit;
     }
     // Remove action will call cart_remove which handles the logic of unsetting the SKU from the cart if it exists. 
@@ -130,18 +130,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
       $sku = isset($_POST['sku']) ? $_POST['sku'] : '';
       cart_remove($sku);
       header('X-Session-Id: ' . session_id());
-      echo json_encode(['status'=>'ok','cart'=>cart_get(),'count'=>cart_count_items()]);
+      echo json_encode(['status' => 'ok', 'cart' => cart_get(), 'count' => cart_count_items()]);
       exit;
     }
     if ($act === 'clear') {
       cart_clear();
       header('X-Session-Id: ' . session_id());
-      echo json_encode(['status'=>'ok','cart'=>[],'count'=>0]);
+      echo json_encode(['status' => 'ok', 'cart' => [], 'count' => 0]);
       exit;
     }
   } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     exit;
   }
 }
@@ -149,13 +149,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_cart'])) {
   header('Content-Type: application/json');
   header('X-Session-Id: ' . session_id());
-  echo json_encode(['cart'=>cart_get(),'count'=>cart_count_items()]);
+  echo json_encode(['cart' => cart_get(), 'count' => cart_count_items()]);
   exit;
 }
 
 // Utility function to generate the next product SKU in the format PR-###. 
 // It queries the inventory for existing SKUs, extracts the numeric part, finds the maximum, and increments it to create the next SKU.
-function getNextProductSku(mysqli $conn): string {
+function getNextProductSku(mysqli $conn): string
+{
   $nextSku = 'PR-001';
   $result = $conn->query("SELECT MAX(CAST(SUBSTRING(sku, 4) AS UNSIGNED)) AS max_num FROM inventory WHERE sku REGEXP '^PR-[0-9]{3}$'");
   if ($result) {
@@ -167,8 +168,9 @@ function getNextProductSku(mysqli $conn): string {
   return $nextSku;
 }
 
-function bloom_reserved_is_int_check($value): bool {
-    return is_int($value);
+function bloom_reserved_is_int_check($value): bool
+{
+  return is_int($value);
 }
 
 // AJAX endpoint to retrieve showcase bundles. 
@@ -273,17 +275,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
   header('Content-Type: application/json');
   if (!isset($_SESSION['user_role']) || $_SESSION['user_role'] !== 'Admin') {
     http_response_code(403);
-    echo json_encode(['status'=>'error','message'=>'Unauthorized']);
+    echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
     exit;
   }
   $sku = isset($_POST['sku']) ? $conn->real_escape_string($_POST['sku']) : '';
   $discount_id = isset($_POST['discount_id']) && $_POST['discount_id'] !== '' ? (int)$_POST['discount_id'] : null;
-  
+
   if (!$sku) {
-    echo json_encode(['status'=>'error','message'=>'Missing SKU']);
+    echo json_encode(['status' => 'error', 'message' => 'Missing SKU']);
     exit;
   }
-  
+
   // If discount_id is null, we want to remove the discount assignment from the product. 
   // Otherwise, we want to assign the specified discount_id to the product. 
   try {
@@ -295,13 +297,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
       $stmt->bind_param("is", $discount_id, $sku);
     }
     if ($stmt->execute()) {
-      echo json_encode(['status'=>'ok','message'=>'Discount assignment updated']);
+      echo json_encode(['status' => 'ok', 'message' => 'Discount assignment updated']);
     } else {
-      echo json_encode(['status'=>'error','message'=>'Database update failed']);
+      echo json_encode(['status' => 'error', 'message' => 'Database update failed']);
     }
     $stmt->close();
   } catch (Exception $e) {
-    echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
   }
   exit;
 }
@@ -311,16 +313,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
   header('Content-Type: application/json');
   if (!isset($_SESSION['user_role']) || $_SESSION['user_role'] !== 'Admin') {
     http_response_code(403);
-    echo json_encode(['status'=>'error','message'=>'Unauthorized']);
+    echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
     exit;
   }
   $discount_id = isset($_POST['discount_id']) ? (int)$_POST['discount_id'] : 0;
-  
+
   if (!$discount_id) {
-    echo json_encode(['status'=>'error','message'=>'Missing discount ID']);
+    echo json_encode(['status' => 'error', 'message' => 'Missing discount ID']);
     exit;
   }
-  
+
   try {
     // First, remove this discount from all products
     $stmt = $conn->prepare("UPDATE inventory SET discount_id = NULL WHERE discount_id = ?");
@@ -329,22 +331,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
       $stmt->execute();
       $stmt->close();
     }
-    
+
     // Then delete the promotion
     $stmt = $conn->prepare("DELETE FROM discounts WHERE discount_id = ?");
     if ($stmt) {
       $stmt->bind_param("i", $discount_id);
       if ($stmt->execute()) {
-        echo json_encode(['status'=>'ok','message'=>'Promotion deleted successfully']);
+        echo json_encode(['status' => 'ok', 'message' => 'Promotion deleted successfully']);
       } else {
-        echo json_encode(['status'=>'error','message'=>'Failed to delete promotion']);
+        echo json_encode(['status' => 'error', 'message' => 'Failed to delete promotion']);
       }
       $stmt->close();
     } else {
-      echo json_encode(['status'=>'error','message'=>'Database error']);
+      echo json_encode(['status' => 'error', 'message' => 'Database error']);
     }
   } catch (Exception $e) {
-    echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
   }
   exit;
 }
@@ -624,23 +626,23 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
   $wallet_contact = "";
   $wallet_account = "";
   $wallet_proof_url = "";
-  
+
   if ($payment_method === "GCash" || $payment_method === "Maya") {
     $wallet_contact = $conn->real_escape_string(isset($_POST["wallet_contact"]) ? $_POST["wallet_contact"] : "");
     $wallet_account = $conn->real_escape_string(isset($_POST["wallet_account_name"]) ? $_POST["wallet_account_name"] : "");
-    
+
     // Handle file upload
     if (isset($_FILES["wallet_proof"]) && $_FILES["wallet_proof"]["error"] === UPLOAD_ERR_OK) {
       $upload_dir = "uploads/wallet_proofs/";
       if (!is_dir($upload_dir)) {
         mkdir($upload_dir, 0755, true);
       }
-      
+
       $file_ext = pathinfo($_FILES["wallet_proof"]["name"], PATHINFO_EXTENSION);
       // Strip the leading '#' so the wallet-proof filename stays URL/filesystem safe.
       $filename = ltrim($order_id, '#') . "_" . time() . "." . $file_ext;
       $filepath = $upload_dir . $filename;
-      
+
       if (move_uploaded_file($_FILES["wallet_proof"]["tmp_name"], $filepath)) {
         $wallet_proof_url = $filepath;
       }
@@ -651,7 +653,11 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     if ($payment_method === 'GCash') {
       if (!preg_match('/^[0-9]{13}$/', $wallet_contact)) {
         $msg = 'GCash Reference Number must be exactly 13 digits (numbers only).';
-        if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>$msg]); exit; }
+        if (isset($_POST['_ajax'])) {
+          header('Content-Type: application/json');
+          echo json_encode(['status' => 'error', 'message' => $msg]);
+          exit;
+        }
         $_SESSION['payment_error'] = $msg;
         header('Location: ?page=checkout');
         exit;
@@ -660,7 +666,11 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
       // Maya: require exactly 12 digits (numbers only)
       if (!preg_match('/^[0-9]{12}$/', $wallet_contact)) {
         $msg = 'Maya Reference ID must be exactly 12 digits (numbers only).';
-        if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>$msg]); exit; }
+        if (isset($_POST['_ajax'])) {
+          header('Content-Type: application/json');
+          echo json_encode(['status' => 'error', 'message' => $msg]);
+          exit;
+        }
         $_SESSION['payment_error'] = $msg;
         header('Location: ?page=checkout');
         exit;
@@ -669,7 +679,11 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     // Server-side validation for wallet account name (letters and spaces only, allow ñ/Ñ)
     if (!preg_match('/^[a-zA-ZñÑ ]+$/', $wallet_account)) { // preg_match is used to validate that the wallet account name contains only letters (including ñ/Ñ) and spaces.
       $msg = 'Account Name must contain letters and spaces only.';
-      if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>$msg]); exit; }
+      if (isset($_POST['_ajax'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'error', 'message' => $msg]);
+        exit;
+      }
       $_SESSION['payment_error'] = $msg;
       header('Location: ?page=checkout');
       exit;
@@ -685,7 +699,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
 
   // Detect whether wallet columns exist in sales table to avoid SQL errors
   $hasWalletCols = false;
-  $colCheck = $conn->query("SHOW COLUMNS FROM sales LIKE 'wallet_contact_number'");
+  $colCheck = $conn->query("SHOW COLUMNS FROM sales LIKE 'wallet_reference_number'");
   if ($colCheck && $colCheck->num_rows > 0) {
     $hasWalletCols = true;
   }
@@ -700,7 +714,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
   $conn->begin_transaction();
   try {
     if ($hasWalletCols) {
-      $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,discount_id,discount_name,discount_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+      $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_reference_number,wallet_account_name,wallet_proof_image_url,discount_id,discount_name,discount_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
       if ($stmt) {
         $stmt->bind_param("ssdddsdsssisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $discount_id, $discount_name, $discount_type, $employee_id, $customer_id);
       }
@@ -715,7 +729,11 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     if (!($stmt && $stmt->execute())) {
       $err = $stmt ? $stmt->error : $conn->error;
       $conn->rollback();
-      if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>'Sale insert failed: '.$err]); exit; }
+      if (isset($_POST['_ajax'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'error', 'message' => 'Sale insert failed: ' . $err]);
+        exit;
+      }
       $_SESSION['payment_error'] = 'Sale recording failed: ' . $err;
       header('Location: ?page=checkout');
       exit;
@@ -727,7 +745,11 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     if (!$ins_item || !$upd_stock) {
       $err = $conn->error;
       $conn->rollback();
-      if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>'DB prepare failed: '.$err]); exit; }
+      if (isset($_POST['_ajax'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'error', 'message' => 'DB prepare failed: ' . $err]);
+        exit;
+      }
       $_SESSION['payment_error'] = 'Database error: ' . $err;
       header('Location: ?page=checkout');
       exit;
@@ -743,7 +765,11 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
       if (!$ins_item->execute()) {
         $err = $ins_item->error;
         $conn->rollback();
-        if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>'Insert item failed: '.$err]); exit; }
+        if (isset($_POST['_ajax'])) {
+          header('Content-Type: application/json');
+          echo json_encode(['status' => 'error', 'message' => 'Insert item failed: ' . $err]);
+          exit;
+        }
         $_SESSION['payment_error'] = 'Failed to record sale item: ' . $err;
         header('Location: ?page=checkout');
         exit;
@@ -753,7 +779,11 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
       if (!$upd_stock->execute()) {
         $err = $upd_stock->error;
         $conn->rollback();
-        if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>'Stock update failed: '.$err]); exit; }
+        if (isset($_POST['_ajax'])) {
+          header('Content-Type: application/json');
+          echo json_encode(['status' => 'error', 'message' => 'Stock update failed: ' . $err]);
+          exit;
+        }
         $_SESSION['payment_error'] = 'Failed to update inventory: ' . $err;
         header('Location: ?page=checkout');
         exit;
@@ -762,7 +792,11 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
       if ($upd_stock->affected_rows === 0) {
         $conn->rollback();
         $msg = "Insufficient stock for SKU {$sku}";
-        if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>$msg]); exit; }
+        if (isset($_POST['_ajax'])) {
+          header('Content-Type: application/json');
+          echo json_encode(['status' => 'error', 'message' => $msg]);
+          exit;
+        }
         $_SESSION['payment_error'] = $msg;
         header('Location: ?page=checkout');
         exit;
@@ -773,102 +807,111 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
     $conn->commit();
   } catch (Exception $e) {
     // Ensure any failure triggers a rollback and surface an error to the caller
-    if ($conn->errno === 0) { /* no-op, connection may not have error info */ }
+    if ($conn->errno === 0) { /* no-op, connection may not have error info */
+    }
     $conn->rollback();
     $err = $e->getMessage();
-    if (isset($_POST['_ajax'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'error','message'=>'Transaction failed: '.$err]); exit; }
+    if (isset($_POST['_ajax'])) {
+      header('Content-Type: application/json');
+      echo json_encode(['status' => 'error', 'message' => 'Transaction failed: ' . $err]);
+      exit;
+    }
     $_SESSION['payment_error'] = 'Transaction failed: ' . $err;
     header('Location: ?page=checkout');
     exit;
   }
-    if ($customer_id) {
-      // Deduct redeemed points if provided (points_redeemed is in PHP float format)
-      $raw_points_used = isset($_POST['points_redeemed']) ? $_POST['points_redeemed'] : 0;
-      $points_used = is_numeric($raw_points_used) ? (int)floor(floatval($raw_points_used)) : 0;
-      if ($points_used > 0) {
-        $stmtDeduct = $conn->prepare("UPDATE customers SET loyalty_points = GREATEST(loyalty_points - ?, 0) WHERE customer_id = ?");
-        if ($stmtDeduct) {
-          $stmtDeduct->bind_param("ii", $points_used, $customer_id);
-          $stmtDeduct->execute();
-          $stmtDeduct->close();
-        }
-      }
-      // Award loyalty points for this purchase (existing behaviour)
-      $ptsEarned = 5;
-      $updatePoints = $conn->prepare("UPDATE customers SET loyalty_points = loyalty_points + ? WHERE customer_id = ?");
-      if ($updatePoints) {
-        $updatePoints->bind_param("ii", $ptsEarned, $customer_id);
-        $updatePoints->execute();
-        $updatePoints->close();
+  if ($customer_id) {
+    // Deduct redeemed points if provided (points_redeemed is in PHP float format)
+    $raw_points_used = isset($_POST['points_redeemed']) ? $_POST['points_redeemed'] : 0;
+    $points_used = is_numeric($raw_points_used) ? (int)floor(floatval($raw_points_used)) : 0;
+    if ($points_used > 0) {
+      $stmtDeduct = $conn->prepare("UPDATE customers SET loyalty_points = GREATEST(loyalty_points - ?, 0) WHERE customer_id = ?");
+      if ($stmtDeduct) {
+        $stmtDeduct->bind_param("ii", $points_used, $customer_id);
+        $stmtDeduct->execute();
+        $stmtDeduct->close();
       }
     }
-    // Record selected showcase bundle (if checkout was opened from a showcase selection)
-    $bundle_name_post = isset($_POST['bundle_name']) ? trim($_POST['bundle_name']) : '';
-    if ($bundle_name_post !== '') {
-      $bn_esc = $conn->real_escape_string($bundle_name_post);
-      $bundle_qty = 1;
-      $showcase_id = null;
-      $p = $conn->prepare("SELECT showcase_id FROM showcase_bundles WHERE name = ? LIMIT 1");
-      if ($p) {
-        $p->bind_param('s', $bn_esc);
-        $p->execute();
-        $p->bind_result($sid);
-        if ($p->fetch()) $showcase_id = (int)$sid;
-        $p->close();
+    // Award loyalty points for this purchase (existing behaviour)
+    $ptsEarned = 5;
+    $updatePoints = $conn->prepare("UPDATE customers SET loyalty_points = loyalty_points + ? WHERE customer_id = ?");
+    if ($updatePoints) {
+      $updatePoints->bind_param("ii", $ptsEarned, $customer_id);
+      $updatePoints->execute();
+      $updatePoints->close();
+    }
+  }
+  // Record selected showcase bundle (if checkout was opened from a showcase selection)
+  $bundle_name_post = isset($_POST['bundle_name']) ? trim($_POST['bundle_name']) : '';
+  if ($bundle_name_post !== '') {
+    $bn_esc = $conn->real_escape_string($bundle_name_post);
+    $bundle_qty = 1;
+    $showcase_id = null;
+    $p = $conn->prepare("SELECT showcase_id FROM showcase_bundles WHERE name = ? LIMIT 1");
+    if ($p) {
+      $p->bind_param('s', $bn_esc);
+      $p->execute();
+      $p->bind_result($sid);
+      if ($p->fetch()) $showcase_id = (int)$sid;
+      $p->close();
+    }
+    // For matching showcase bundle, we include the showcase_id for better tracking
+    if ($showcase_id !== null) {
+      $ins = $conn->prepare("INSERT INTO showcase_sales (order_id, showcase_id, bundle_name, quantity, sale_date, employee_id) VALUES (?,?,?,?,?,?)");
+      if ($ins) {
+        $ins->bind_param('sisiss', $order_id, $showcase_id, $bn_esc, $bundle_qty, $sale_date, $employee_id);
+        $ins->execute();
+        $ins->close();
       }
-      // For matching showcase bundle, we include the showcase_id for better tracking
-      if ($showcase_id !== null) {
-        $ins = $conn->prepare("INSERT INTO showcase_sales (order_id, showcase_id, bundle_name, quantity, sale_date, employee_id) VALUES (?,?,?,?,?,?)");
-        if ($ins) {
-          $ins->bind_param('sisiss', $order_id, $showcase_id, $bn_esc, $bundle_qty, $sale_date, $employee_id);
-          $ins->execute();
-          $ins->close();
-        }
-      } else {
-        $ins = $conn->prepare("INSERT INTO showcase_sales (order_id, bundle_name, quantity, sale_date, employee_id) VALUES (?,?,?,?,?)");
-        if ($ins) {
-          $ins->bind_param('ssiss', $order_id, $bn_esc, $bundle_qty, $sale_date, $employee_id);
-          $ins->execute();
-          $ins->close();
-        }
+    } else {
+      $ins = $conn->prepare("INSERT INTO showcase_sales (order_id, bundle_name, quantity, sale_date, employee_id) VALUES (?,?,?,?,?)");
+      if ($ins) {
+        $ins->bind_param('ssiss', $order_id, $bn_esc, $bundle_qty, $sale_date, $employee_id);
+        $ins->execute();
+        $ins->close();
       }
     }
-    // The stored order_id already IS the human-friendly checkout order number
-    // (e.g. #1001, #1002), generated by generateOrderId(). Use it directly.
-    $order_id_display = $order_id;
-    $redirect_url = '?page=checkout&success=1&order_id=' . urlencode($order_id_display);
-    // Clear the cart so the next transaction starts fresh
-    cart_clear();
-    // If request came from AJAX (FormData + fetch), return JSON so client can react
-    if (isset($_POST['_ajax'])) {
-      header('Content-Type: application/json');
-      header('X-Session-Id: ' . session_id());
-      echo json_encode(['status' => 'ok', 'redirect' => $redirect_url]);
-      exit;
-    }
-    header("Location: $redirect_url");
+  }
+  // The stored order_id already IS the human-friendly checkout order number
+  // (e.g. #1001, #1002), generated by generateOrderId(). Use it directly.
+  $order_id_display = $order_id;
+  $redirect_url = '?page=checkout&success=1&order_id=' . urlencode($order_id_display);
+  // Clear the cart so the next transaction starts fresh
+  cart_clear();
+  // If request came from AJAX (FormData + fetch), return JSON so client can react
+  if (isset($_POST['_ajax'])) {
+    header('Content-Type: application/json');
+    header('X-Session-Id: ' . session_id());
+    echo json_encode(['status' => 'ok', 'redirect' => $redirect_url]);
     exit;
+  }
+  header("Location: $redirect_url");
+  exit;
 }
 
 // ── Inventory CRUD ────────────────────────────────────────────
 if ($page === "inventory" && isset($_SESSION["user_role"]) && $_SESSION["user_role"] === "Admin") {
   // SKU Validation Functions
-  function isValidBaseProductSku(string $sku): bool {
+  function isValidBaseProductSku(string $sku): bool
+  {
     return preg_match('/^[A-Za-z]+-\d{3}$/', $sku) === 1;
   }
 
   // Variant SKU must follow the format
-  function isValidVariantSku(string $sku): bool {
+  function isValidVariantSku(string $sku): bool
+  {
     return preg_match('/^[A-Za-z]+-\d{3}-V\d+$/', $sku) === 1;
   }
 
   // General SKU validation that accepts either base product SKUs or variant SKUs
-  function isValidProductSku(string $sku): bool {
+  function isValidProductSku(string $sku): bool
+  {
     return isValidBaseProductSku($sku) || isValidVariantSku($sku);
   }
 
   // Extracts the base product SKU from a variant SKU (e.g. PR-001-V1 → PR-001). Returns empty string if input is not a valid variant SKU.
-  function getVariantBaseSku(string $sku): string {
+  function getVariantBaseSku(string $sku): string
+  {
     if (preg_match('/^([A-Za-z]+-\d{3})(?:-V\d+)?$/', $sku, $matches)) {
       return $matches[1];
     }
@@ -876,15 +919,16 @@ if ($page === "inventory" && isset($_SESSION["user_role"]) && $_SESSION["user_ro
   }
 
   // Normalizes SKU input by trimming whitespace and converting to uppercase, ensuring consistent formatting for validation and database storage. 
-  function normalizeProductSku(string $sku): string {
+  function normalizeProductSku(string $sku): string
+  {
     return strtoupper(trim($sku));
   }
 
-// Handle Add Product, Update Product, and Add Variant form submissions with dynamic parameter handling based on form layout types.
-if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_POST["add_variant_submit"])) {
+  // Handle Add Product, Update Product, and Add Variant form submissions with dynamic parameter handling based on form layout types.
+  if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_POST["add_variant_submit"])) {
     $is_update  = isset($_POST["update_product"]);
     $is_variant = isset($_POST["add_variant_submit"]);
-    
+
     // Choose parameters dynamically based on form layout types
     $sku        = normalizeProductSku(isset($_POST[$is_variant ? "new_sku" : "sku"]) ? $_POST[$is_variant ? "new_sku" : "sku"] : "");
     $old_sku    = normalizeProductSku(isset($_POST["old_sku"]) ? $_POST["old_sku"] : $sku);
@@ -981,7 +1025,7 @@ if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_P
         header('Location: ?page=inventory&tab=items');
         exit;
       }
-      
+
       // If $image_path has a value, it means a new file was uploaded successfully
       if ($image_path !== "") {
         $stmt = $conn->prepare("UPDATE inventory SET product_name = ?, price = ?, stock_qty = ?, category_id = ?, image_url = ?, discount_id = ? WHERE sku = ?");
@@ -1038,7 +1082,7 @@ if (isset($_POST["add_product"]) || isset($_POST["update_product"]) || isset($_P
     exit;
   }
 
-// Handle Add Variant Form Submission
+  // Handle Add Variant Form Submission
   if (isset($_POST["add_variant_submit"])) {
     $original_sku = normalizeProductSku($_POST["original_sku"] ?? "");
     $new_sku      = normalizeProductSku($_POST["new_sku"] ?? "");
@@ -1200,9 +1244,7 @@ if ($page === "crm") {
       if ($cid) {
         $conn->query("INSERT INTO customer_approval_history (customer_id,action,employee_id,note) VALUES ($cid,'created_and_approved','$creator','Created by admin and auto-approved')");
       }
-    } 
-
-    else {
+    } else {
       // Cashier creates a pending customer
       $insertSql = "INSERT INTO customers (full_name,contact_email,contact_number,photo_url,member_since,approved,created_by) VALUES ('$n','$c_email','$c_phone','$photo_path',$member_since_sql,0,'$creator')";
       try {
@@ -1248,7 +1290,7 @@ if ($page === "crm") {
     $id = (int)(isset($_POST["customer_id"])  ? $_POST["customer_id"]  : 0);
     $n_raw = isset($_POST["full_name"]) ? trim($_POST["full_name"]) : '';
     $nameCheck = validateStaffName($n_raw);
-    
+
     // Validate the full name input using the same rules as staff names (letters, spaces, and ñ/Ñ only)
     if ($nameCheck !== true) {
       $_SESSION["crm_error"] = $nameCheck;
@@ -1331,7 +1373,7 @@ if ($page === "employees" && $_SESSION["user_role"] === "Admin") {
     $id       = $conn->real_escape_string(isset($_POST["employee_id"]) ? $_POST["employee_id"] : "");
     $name     = $conn->real_escape_string(isset($_POST["full_name"])   ? $_POST["full_name"]   : "");
     $role     = $conn->real_escape_string(isset($_POST["role"])        ? $_POST["role"]        : "Cashier");
-    
+
     // Employee photo upload
     $photo_sql  = "";
     $photo_path = null;
@@ -1375,16 +1417,16 @@ if ($page === "employees" && $_SESSION["user_role"] === "Admin") {
 // Ensure predefined categories exist (Main / Filler / Greenery)
 $__predef = ['Main', 'Filler', 'Greenery'];
 foreach ($__predef as $__pn) {
-    $__esc = $conn->real_escape_string($__pn);
-    $__chk = $conn->query("SELECT category_id FROM categories WHERE LOWER(category_name) = LOWER('$__esc') LIMIT 1");
-    if ($__chk && $__chk->num_rows === 0) {
+  $__esc = $conn->real_escape_string($__pn);
+  $__chk = $conn->query("SELECT category_id FROM categories WHERE LOWER(category_name) = LOWER('$__esc') LIMIT 1");
+  if ($__chk && $__chk->num_rows === 0) {
     try {
       $conn->query("INSERT INTO categories (category_name) VALUES ('$__esc')");
     } catch (mysqli_sql_exception $e) {
       // If insert fails due to schema issues (duplicate PK, missing AUTO_INCREMENT),
       // skip here to avoid fatal uncaught exception. Admin should repair DB schema.
     }
-    }
+  }
 }
 
 // ─── DATA FETCH ───────────────────────────────────────────────────────
@@ -1492,13 +1534,13 @@ if ($page === "reports") {
     JOIN sales s ON si.order_id=s.order_id 
     WHERE $r_where AND s.status='Completed' 
     GROUP BY si.sku ORDER BY cnt DESC LIMIT 5");
-    // Determine best selling showcase bundle for the selected period
-    $r_best_bundle = '—';
-    $bestQ = $conn->query("SELECT COALESCE(sb.name, ss.bundle_name) as name, SUM(ss.quantity) as cnt FROM showcase_sales ss LEFT JOIN showcase_bundles sb ON ss.showcase_id=sb.showcase_id WHERE $r_where GROUP BY ss.showcase_id, ss.bundle_name ORDER BY cnt DESC LIMIT 1");
-    if ($bestQ && $bestQ->num_rows) {
-      $br = $bestQ->fetch_assoc();
-      if (!empty($br['name'])) $r_best_bundle = $br['name'];
-    }
+  // Determine best selling showcase bundle for the selected period
+  $r_best_bundle = '—';
+  $bestQ = $conn->query("SELECT COALESCE(sb.name, ss.bundle_name) as name, SUM(ss.quantity) as cnt FROM showcase_sales ss LEFT JOIN showcase_bundles sb ON ss.showcase_id=sb.showcase_id WHERE $r_where GROUP BY ss.showcase_id, ss.bundle_name ORDER BY cnt DESC LIMIT 1");
+  if ($bestQ && $bestQ->num_rows) {
+    $br = $bestQ->fetch_assoc();
+    if (!empty($br['name'])) $r_best_bundle = $br['name'];
+  }
 }
 
 // For inventory page, we determine the active tab based on the 'tab' query parameter
@@ -2164,7 +2206,7 @@ function factorial(int $n): int
       background: var(--white);
       border: 1.5px solid var(--taupe);
       border-radius: var(--radius);
-      box-shadow: 0 16px 40px rgba(56,46,40,.12);
+      box-shadow: 0 16px 40px rgba(56, 46, 40, .12);
       z-index: 20;
       display: none;
     }
@@ -2780,14 +2822,16 @@ function factorial(int $n): int
     }
 
     .cart-list {
-      flex: 1 1 auto; /* allow growth and shrinking, and enable scrolling */
+      flex: 1 1 auto;
+      /* allow growth and shrinking, and enable scrolling */
       min-height: 60px;
       overflow-y: auto;
     }
 
     .co-totals,
     .co-actions {
-      flex-shrink: 0; /* keep totals and action buttons visible */
+      flex-shrink: 0;
+      /* keep totals and action buttons visible */
     }
 
     /* ── Receipt ── */
@@ -2948,32 +2992,33 @@ function factorial(int $n): int
 
     /* ── New Variant ── */
     .btn-variant {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    background-color: #ffffff;
-    color: #4a3f35; /* Earthy/chestnut tint */
-    border: 1px solid #dcd6d0;
-    border-radius: 6px;
-    padding: 6px 14px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background-color: #ffffff;
+      color: #4a3f35;
+      /* Earthy/chestnut tint */
+      border: 1px solid #dcd6d0;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     }
 
     .btn-variant:hover {
-        background-color: #fcfbfa;
-        border-color: #c5bbb2;
-        color: #2e251e;
-        transform: translateY(-1px);
+      background-color: #fcfbfa;
+      border-color: #c5bbb2;
+      color: #2e251e;
+      transform: translateY(-1px);
     }
 
     .btn-variant:active {
-        transform: translateY(0);
-        background-color: #f5f2ef;
+      transform: translateY(0);
+      background-color: #f5f2ef;
     }
 
     /* ── Alerts ── */
@@ -3277,21 +3322,45 @@ function factorial(int $n): int
 
     /* ── Responsive ── */
     @media (max-width: 1024px) {
+
       /* medium screens: slightly narrower cart to preserve product area */
-      .co-right { width: 360px; }
+      .co-right {
+        width: 360px;
+      }
     }
 
     /* Tweak layout for intermediate widths (tablet / small laptop) where
        the cart can otherwise dominate the viewport. This tightens the
        cart and makes product tiles smaller so both areas remain visible. */
     @media (min-width: 769px) and (max-width: 980px) {
-      .co-right { width: 320px; }
-      .prod-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
-      .co-left { padding: 18px; }
-      .prod-img { height: 110px; }
-      .co-cart-header { padding: 16px 16px 12px; }
-      .co-totals { padding: 10px 12px; }
-      .co-actions { padding: 12px 14px 14px; }
+      .co-right {
+        width: 320px;
+      }
+
+      .prod-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+      }
+
+      .co-left {
+        padding: 18px;
+      }
+
+      .prod-img {
+        height: 110px;
+      }
+
+      .co-cart-header {
+        padding: 16px 16px 12px;
+      }
+
+      .co-totals {
+        padding: 10px 12px;
+      }
+
+      .co-actions {
+        padding: 12px 14px 14px;
+      }
     }
 
     @media (max-width: 768px) {
@@ -3338,11 +3407,18 @@ function factorial(int $n): int
           height: auto;
           overflow: auto;
         }
-        .co-right { width: 100%; border-left: none; border-top: 1.5px solid var(--taupe); }
+
+        .co-right {
+          width: 100%;
+          border-left: none;
+          border-top: 1.5px solid var(--taupe);
+        }
       }
 
       /* For tablet/smaller viewports keep cart narrower */
-      .co-right { width: 320px; }
+      .co-right {
+        width: 320px;
+      }
 
       /* Keep the cart panel bounded on small screens so the item list can scroll
          while totals/actions remain visible. This prevents the summary from
@@ -3417,12 +3493,30 @@ function factorial(int $n): int
       }
 
       @media (max-width: 420px) {
-        .co-totals { padding: 6px 8px; }
-        .tot-row { font-size: 10px; }
-        .tot-row span:first-child { font-size: 10px; }
-        .tot-row span:last-child { font-size: 11px; }
-        .tot-row.grand { font-size: 12px; }
-        .btn.btn-primary.btn-full.btn-lg { font-size: 12px; padding: 8px 10px; }
+        .co-totals {
+          padding: 6px 8px;
+        }
+
+        .tot-row {
+          font-size: 10px;
+        }
+
+        .tot-row span:first-child {
+          font-size: 10px;
+        }
+
+        .tot-row span:last-child {
+          font-size: 11px;
+        }
+
+        .tot-row.grand {
+          font-size: 12px;
+        }
+
+        .btn.btn-primary.btn-full.btn-lg {
+          font-size: 12px;
+          padding: 8px 10px;
+        }
       }
     }
   </style>
@@ -3435,19 +3529,25 @@ function factorial(int $n): int
         <div class="auth-logo">Bloom POS</div>
         <div class="auth-sub">Flower Shop Point of Sale</div>
         <?php if ($auth_error !== ''): ?><div class="auth-err"><?= htmlspecialchars($auth_error, ENT_QUOTES, 'UTF-8') ?></div>
-        
-        <!-- Script for auto-resetting the login form and focusing the employee ID field if there's an authentication error -->
-        <script>
-          document.addEventListener('DOMContentLoaded', function(){
-            var err = <?= json_encode($auth_error) ?>;
-            if (err && err !== '') {
-              var f = document.querySelector('form[action="?page=login"]');
-              if (f) { try { f.reset(); var el = f.querySelector('[name=emp_id]'); if(el) el.focus(); } catch(e){} }
-            }
-          });
-        </script>
 
-        <!-- Display a success message if the user has just registered an account -->
+          <!-- Script for auto-resetting the login form and focusing the employee ID field if there's an authentication error -->
+          <script>
+            document.addEventListener('DOMContentLoaded', function() {
+              var err = <?= json_encode($auth_error) ?>;
+              if (err && err !== '') {
+                var f = document.querySelector('form[action="?page=login"]');
+                if (f) {
+                  try {
+                    f.reset();
+                    var el = f.querySelector('[name=emp_id]');
+                    if (el) el.focus();
+                  } catch (e) {}
+                }
+              }
+            });
+          </script>
+
+          <!-- Display a success message if the user has just registered an account -->
         <?php endif; ?>
         <?php if (isset($_GET['registered'])): ?><div class="auth-ok">Account created. You may now log in.</div><?php endif; ?>
         <form method="POST" action="?page=login">
@@ -3464,26 +3564,32 @@ function factorial(int $n): int
     </div>
 
 
-  <!-- Employee registration page, accessible only to admins, with form validation and error handling -->
+    <!-- Employee registration page, accessible only to admins, with form validation and error handling -->
   <?php elseif ($page === 'register'): ?>
     <div class="auth-wrap">
       <div class="auth-box" style="width:420px;">
         <div class="auth-logo">Bloom POS</div>
         <div class="auth-sub">Register Staff Account</div>
         <?php if ($reg_error !== ''): ?><div class="auth-err"><?= htmlspecialchars($reg_error, ENT_QUOTES, 'UTF-8') ?></div>
-        
-        <!-- Script for auto-resetting the registration form and focusing the employee ID field if there's a registration error -->
-        <script>
-          document.addEventListener('DOMContentLoaded', function(){
-            var err = <?= json_encode($reg_error) ?>;
-            if (err && err !== '') {
-              var f = document.querySelector('form[action="?page=register"]');
-              if (f) { try { f.reset(); var el = f.querySelector('[name=emp_id]'); if(el) el.focus(); } catch(e){} }
-            }
-          });
-        </script>
 
-        <!-- Display a success message if the account was created successfully and prompt the user to log in -->
+          <!-- Script for auto-resetting the registration form and focusing the employee ID field if there's a registration error -->
+          <script>
+            document.addEventListener('DOMContentLoaded', function() {
+              var err = <?= json_encode($reg_error) ?>;
+              if (err && err !== '') {
+                var f = document.querySelector('form[action="?page=register"]');
+                if (f) {
+                  try {
+                    f.reset();
+                    var el = f.querySelector('[name=emp_id]');
+                    if (el) el.focus();
+                  } catch (e) {}
+                }
+              }
+            });
+          </script>
+
+          <!-- Display a success message if the account was created successfully and prompt the user to log in -->
         <?php endif; ?>
         <form method="POST" action="?page=register" enctype="multipart/form-data">
           <div class="form-row">
@@ -3508,25 +3614,25 @@ function factorial(int $n): int
       </div>
     </div>
 
-  <!-- Showcase bundle management page, allowing admins to create and manage premium flower bundles, and displaying the best-selling bundle based on sales data -->
+    <!-- Showcase bundle management page, allowing admins to create and manage premium flower bundles, and displaying the best-selling bundle based on sales data -->
   <?php elseif ($page === 'showcase'): ?>
     <?php
-      $showcaseBundles = [];
-      $showcaseRes = $conn->query("SELECT showcase_id, name, description, main, fillers, greenery, meta, image_url FROM showcase_bundles ORDER BY showcase_id ASC");
-      if ($showcaseRes) {
-        while ($row = $showcaseRes->fetch_assoc()) {
-          $showcaseBundles[] = $row;
-        }
+    $showcaseBundles = [];
+    $showcaseRes = $conn->query("SELECT showcase_id, name, description, main, fillers, greenery, meta, image_url FROM showcase_bundles ORDER BY showcase_id ASC");
+    if ($showcaseRes) {
+      while ($row = $showcaseRes->fetch_assoc()) {
+        $showcaseBundles[] = $row;
       }
-      // Determine best-selling showcase bundle (lifetime) and expose to client
-      $bestShowcaseId = null;
-      $bestShowcaseName = '—';
-      $bestQ = $conn->query("SELECT ss.showcase_id, COALESCE(sb.name, ss.bundle_name) AS name, SUM(ss.quantity) AS cnt FROM showcase_sales ss LEFT JOIN showcase_bundles sb ON ss.showcase_id=sb.showcase_id GROUP BY ss.showcase_id, ss.bundle_name ORDER BY cnt DESC LIMIT 1");
-      if ($bestQ && $bestQ->num_rows) {
-        $br = $bestQ->fetch_assoc();
-        if (isset($br['showcase_id']) && $br['showcase_id'] !== null) $bestShowcaseId = (int)$br['showcase_id'];
-        if (!empty($br['name'])) $bestShowcaseName = $br['name'];
-      }
+    }
+    // Determine best-selling showcase bundle (lifetime) and expose to client
+    $bestShowcaseId = null;
+    $bestShowcaseName = '—';
+    $bestQ = $conn->query("SELECT ss.showcase_id, COALESCE(sb.name, ss.bundle_name) AS name, SUM(ss.quantity) AS cnt FROM showcase_sales ss LEFT JOIN showcase_bundles sb ON ss.showcase_id=sb.showcase_id GROUP BY ss.showcase_id, ss.bundle_name ORDER BY cnt DESC LIMIT 1");
+    if ($bestQ && $bestQ->num_rows) {
+      $br = $bestQ->fetch_assoc();
+      if (isset($br['showcase_id']) && $br['showcase_id'] !== null) $bestShowcaseId = (int)$br['showcase_id'];
+      if (!empty($br['name'])) $bestShowcaseName = $br['name'];
+    }
     ?>
 
     <div class="page">
@@ -3538,10 +3644,10 @@ function factorial(int $n): int
             <div style="font-size:12px; color:var(--text-3);">Explore premium bundle packages and bloom your own bouquet.</div>
           </div>
         </div>
-          <?php if ($is_admin): ?>
-            <button type="button" class="btn btn-primary add-showcase-btn" onclick="openAddShowcaseModal()">Add Showcase</button>
-          <?php endif; ?>
-        </div>
+        <?php if ($is_admin): ?>
+          <button type="button" class="btn btn-primary add-showcase-btn" onclick="openAddShowcaseModal()">Add Showcase</button>
+        <?php endif; ?>
+      </div>
       <div class="showcase-panel">
         <div class="showcase-grid" id="showcaseGrid"></div>
       </div>
@@ -3570,19 +3676,25 @@ function factorial(int $n): int
       </div>
     </div>
 
-        <!-- If there was an error during the payment process, display it in an alert box on page load -->
-        <?php if (isset($_SESSION['payment_error']) && $_SESSION['payment_error'] !== ''): ?>
-          <script>
-            document.addEventListener('DOMContentLoaded', function(){
-              try {
-                var overlay = document.getElementById('pay_overlay');
-                var ed = document.getElementById('payment_error');
-                if (ed) { ed.innerHTML = <?= json_encode($_SESSION['payment_error']) ?>; ed.style.display = 'block'; }
-                if (overlay) overlay.classList.add('open');
-              } catch(e) { console.error(e); }
-            });
-          </script>
-        <?php unset($_SESSION['payment_error']); endif; ?>
+    <!-- If there was an error during the payment process, display it in an alert box on page load -->
+    <?php if (isset($_SESSION['payment_error']) && $_SESSION['payment_error'] !== ''): ?>
+      <script>
+        document.addEventListener('DOMContentLoaded', function() {
+          try {
+            var overlay = document.getElementById('pay_overlay');
+            var ed = document.getElementById('payment_error');
+            if (ed) {
+              ed.innerHTML = <?= json_encode($_SESSION['payment_error']) ?>;
+              ed.style.display = 'block';
+            }
+            if (overlay) overlay.classList.add('open');
+          } catch (e) {
+            console.error(e);
+          }
+        });
+      </script>
+    <?php unset($_SESSION['payment_error']);
+    endif; ?>
 
     <!-- Modal for adding a new showcase bundle, accessible only to admins, with form fields for bundle details and image upload, and client-side validation -->
     <div class="overlay" id="addShowcaseModal">
@@ -3626,43 +3738,311 @@ function factorial(int $n): int
 
     <!-- Style for the showcase bundle management page -->
     <style>
-      .showcase-panel { padding: 18px 0; }
-      .showcase-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:26px; }
-      .showcase-card { position:relative; cursor:pointer; border:1px solid var(--taupe); border-radius:18px; background:var(--white); box-shadow:0 12px 22px rgba(0,0,0,.06); overflow:hidden; }
-      .showcase-delete-btn { position:absolute; top:12px; left:12px; width:32px; height:32px; border:none; border-radius:50%; background:rgba(255,255,255,.92); color:var(--espresso); font-size:18px; line-height:1; cursor:pointer; opacity:0; transition:opacity .2s ease, transform .2s ease; z-index:9; }
-      .showcase-card:hover .showcase-delete-btn { opacity:1; transform:translateY(-1px); }
-      .best-sash { position:absolute; top:12px; right:12px; display:inline-flex; align-items:center; gap:8px; background:linear-gradient(90deg,#ff7fb3 0%,#ffb6d5 100%); color:#fff; font-weight:800; font-size:12px; padding:6px 10px; box-shadow:0 6px 18px rgba(0,0,0,.12); z-index:12; letter-spacing:.04em; text-transform:uppercase; border-radius:999px; border:1px solid rgba(255,255,255,0.12); }
-      @media(max-width:760px) { .best-sash { right:10px; font-size:11px; padding:5px 8px; } }
-      .showcase-image { height:180px; background:linear-gradient(145deg, #ffd9e8 0%, #f1e4ff 100%); display:flex; align-items:center; justify-content:center; }
-      .showcase-image-inner { text-align:center; font-size:13px; color:var(--text-3); padding:16px; }
-      .showcase-card-body { padding:14px; }
-      .showcase-card-title { font-size:16px; font-weight:700; margin-bottom:6px; color:var(--espresso); }
-      .showcase-card-meta { font-size:12px; color:var(--text-3); line-height:1.5; }
-      .sub-nav { border:none; background:var(--taupe); color:var(--espresso); width:48px; height:48px; border-radius:50%; font-size:24px; cursor:pointer; transition:transform .2s ease; }
-      .sub-nav:hover { transform:scale(1.04); }
-      .showcase-modal-grid { display:grid; grid-template-columns:1.1fr .9fr; gap:24px; align-items:start; margin-top:18px; }
-      .modal-image-block { background:var(--oatmeal); border-radius:22px; padding:24px; display:flex; align-items:center; justify-content:center; }
-      .modal-image-placeholder { width:100%; min-height:360px; border-radius:20px; background:linear-gradient(135deg, #f8d1d1, #e5daf5); display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--text-3); text-align:center; padding:24px; }
-      .modal-copy-block { display:flex; flex-direction:column; justify-content:space-between; }
-      .modal-bundle-name { font-size:28px; font-weight:800; color:var(--espresso); margin:0; }
-      .showcase-stock-warning { display:none; font-size:13px; font-weight:700; color:#d14343; margin:8px 0 0; padding:.35em .75em; border-radius:999px; background:rgba(209,67,67,.1); letter-spacing:.02em; text-transform:uppercase; }
-      .showcase-stock-warning.is-insufficient { display:inline-flex; color:#d14343; }
-      .modal-bundle-sub { font-size:13px; color:var(--text-3); margin:12px 0 18px; text-transform:uppercase; letter-spacing:.08em; }
-      .modal-bundle-description { font-size:15px; line-height:1.7; color:var(--text-2); margin-bottom:24px; }
-      .btn.btn-disabled { opacity:.56 !important; cursor:not-allowed !important; pointer-events:none !important; }
-      .showcase-footer { margin-top:32px; }
-      .sub-carousel { display:flex; align-items:center; gap:12px; }
-      .sub-track-window { overflow:hidden; flex:1; }
-      .sub-track { display:flex; gap:10px; transition:transform .35s ease; }
-      .sub-thumb { min-width:120px; height:96px; background:linear-gradient(135deg, #ffe3e3, #e9e8ff); border-radius:18px; padding:10px; display:flex; flex-direction:column; justify-content:space-between; cursor:pointer; border:2px solid transparent; }
-      .sub-thumb.active { border-color:var(--chestnut); }
-      .sub-thumb-title { font-size:12px; font-weight:700; color:var(--espresso); }
-      .sub-thumb-meta { font-size:11px; color:var(--text-3); }
-      .add-showcase-btn { padding:10px 18px; border-radius:12px; font-weight:700; box-shadow:0 10px 24px rgba(0,0,0,.08); }
-      .showcase-image-preview { min-height:180px; border-radius:18px; background:linear-gradient(135deg, #f2f0ff, #fff4f6); display:flex; align-items:center; justify-content:center; color:var(--text-3); margin-top:10px; padding:16px; text-align:center; }
-      .showcase-image-preview.has-image { background-size:cover; background-position:center; color:transparent; }
-      @media(max-width:1080px) { .showcase-modal-grid { grid-template-columns:1fr; } .showcase-card { min-width:calc((100% - 14px) / 2); flex:0 0 calc((100% - 14px) / 2); max-width:calc((100% - 14px) / 2); } }
-      @media(max-width:760px) { .showcase-controls { flex-direction:column; } .showcase-nav-btn { width:42px; height:42px; } .showcase-card { min-width:100%; flex:0 0 100%; max-width:100%; } }
+      .showcase-panel {
+        padding: 18px 0;
+      }
+
+      .showcase-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 26px;
+      }
+
+      .showcase-card {
+        position: relative;
+        cursor: pointer;
+        border: 1px solid var(--taupe);
+        border-radius: 18px;
+        background: var(--white);
+        box-shadow: 0 12px 22px rgba(0, 0, 0, .06);
+        overflow: hidden;
+      }
+
+      .showcase-delete-btn {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, .92);
+        color: var(--espresso);
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity .2s ease, transform .2s ease;
+        z-index: 9;
+      }
+
+      .showcase-card:hover .showcase-delete-btn {
+        opacity: 1;
+        transform: translateY(-1px);
+      }
+
+      .best-sash {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: linear-gradient(90deg, #ff7fb3 0%, #ffb6d5 100%);
+        color: #fff;
+        font-weight: 800;
+        font-size: 12px;
+        padding: 6px 10px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, .12);
+        z-index: 12;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      @media(max-width:760px) {
+        .best-sash {
+          right: 10px;
+          font-size: 11px;
+          padding: 5px 8px;
+        }
+      }
+
+      .showcase-image {
+        height: 180px;
+        background: linear-gradient(145deg, #ffd9e8 0%, #f1e4ff 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .showcase-image-inner {
+        text-align: center;
+        font-size: 13px;
+        color: var(--text-3);
+        padding: 16px;
+      }
+
+      .showcase-card-body {
+        padding: 14px;
+      }
+
+      .showcase-card-title {
+        font-size: 16px;
+        font-weight: 700;
+        margin-bottom: 6px;
+        color: var(--espresso);
+      }
+
+      .showcase-card-meta {
+        font-size: 12px;
+        color: var(--text-3);
+        line-height: 1.5;
+      }
+
+      .sub-nav {
+        border: none;
+        background: var(--taupe);
+        color: var(--espresso);
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        font-size: 24px;
+        cursor: pointer;
+        transition: transform .2s ease;
+      }
+
+      .sub-nav:hover {
+        transform: scale(1.04);
+      }
+
+      .showcase-modal-grid {
+        display: grid;
+        grid-template-columns: 1.1fr .9fr;
+        gap: 24px;
+        align-items: start;
+        margin-top: 18px;
+      }
+
+      .modal-image-block {
+        background: var(--oatmeal);
+        border-radius: 22px;
+        padding: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal-image-placeholder {
+        width: 100%;
+        min-height: 360px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, #f8d1d1, #e5daf5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        color: var(--text-3);
+        text-align: center;
+        padding: 24px;
+      }
+
+      .modal-copy-block {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .modal-bundle-name {
+        font-size: 28px;
+        font-weight: 800;
+        color: var(--espresso);
+        margin: 0;
+      }
+
+      .showcase-stock-warning {
+        display: none;
+        font-size: 13px;
+        font-weight: 700;
+        color: #d14343;
+        margin: 8px 0 0;
+        padding: .35em .75em;
+        border-radius: 999px;
+        background: rgba(209, 67, 67, .1);
+        letter-spacing: .02em;
+        text-transform: uppercase;
+      }
+
+      .showcase-stock-warning.is-insufficient {
+        display: inline-flex;
+        color: #d14343;
+      }
+
+      .modal-bundle-sub {
+        font-size: 13px;
+        color: var(--text-3);
+        margin: 12px 0 18px;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+      }
+
+      .modal-bundle-description {
+        font-size: 15px;
+        line-height: 1.7;
+        color: var(--text-2);
+        margin-bottom: 24px;
+      }
+
+      .btn.btn-disabled {
+        opacity: .56 !important;
+        cursor: not-allowed !important;
+        pointer-events: none !important;
+      }
+
+      .showcase-footer {
+        margin-top: 32px;
+      }
+
+      .sub-carousel {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .sub-track-window {
+        overflow: hidden;
+        flex: 1;
+      }
+
+      .sub-track {
+        display: flex;
+        gap: 10px;
+        transition: transform .35s ease;
+      }
+
+      .sub-thumb {
+        min-width: 120px;
+        height: 96px;
+        background: linear-gradient(135deg, #ffe3e3, #e9e8ff);
+        border-radius: 18px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        cursor: pointer;
+        border: 2px solid transparent;
+      }
+
+      .sub-thumb.active {
+        border-color: var(--chestnut);
+      }
+
+      .sub-thumb-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--espresso);
+      }
+
+      .sub-thumb-meta {
+        font-size: 11px;
+        color: var(--text-3);
+      }
+
+      .add-showcase-btn {
+        padding: 10px 18px;
+        border-radius: 12px;
+        font-weight: 700;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, .08);
+      }
+
+      .showcase-image-preview {
+        min-height: 180px;
+        border-radius: 18px;
+        background: linear-gradient(135deg, #f2f0ff, #fff4f6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-3);
+        margin-top: 10px;
+        padding: 16px;
+        text-align: center;
+      }
+
+      .showcase-image-preview.has-image {
+        background-size: cover;
+        background-position: center;
+        color: transparent;
+      }
+
+      @media(max-width:1080px) {
+        .showcase-modal-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .showcase-card {
+          min-width: calc((100% - 14px) / 2);
+          flex: 0 0 calc((100% - 14px) / 2);
+          max-width: calc((100% - 14px) / 2);
+        }
+      }
+
+      @media(max-width:760px) {
+        .showcase-controls {
+          flex-direction: column;
+        }
+
+        .showcase-nav-btn {
+          width: 42px;
+          height: 42px;
+        }
+
+        .showcase-card {
+          min-width: 100%;
+          flex: 0 0 100%;
+          max-width: 100%;
+        }
+      }
     </style>
 
     <!-- Script for managing the showcase bundles, including displaying bundle details, checking stock availability, and handling the addition of bundles to the cart -->
@@ -3672,7 +4052,7 @@ function factorial(int $n): int
       const BEST_SHOWCASE_ID = <?= json_encode($bestShowcaseId, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       const BEST_SHOWCASE_NAME = <?= json_encode($bestShowcaseName, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       // Normalize server-side keys to friendly JS names (image_url -> imageUrl)
-      (function(){
+      (function() {
         for (let i = 0; i < SHOWCASE_BUNDLES.length; i++) {
           const b = SHOWCASE_BUNDLES[i];
           if (b && b.image_url && !b.imageUrl) b.imageUrl = b.image_url;
@@ -3699,14 +4079,27 @@ function factorial(int $n): int
               }
             });
           }
-        } catch (e) { console.error('showcase local merge error', e); }
+        } catch (e) {
+          console.error('showcase local merge error', e);
+        }
 
         // ensure storage sync helper
         window.saveShowcaseLocal = function() {
           try {
-            const toSave = SHOWCASE_BUNDLES.map(b => ({ showcase_id: b.showcase_id, name: b.name, description: b.description, main: b.main, fillers: b.fillers, greenery: b.greenery, meta: b.meta, imageUrl: b.imageUrl }));
+            const toSave = SHOWCASE_BUNDLES.map(b => ({
+              showcase_id: b.showcase_id,
+              name: b.name,
+              description: b.description,
+              main: b.main,
+              fillers: b.fillers,
+              greenery: b.greenery,
+              meta: b.meta,
+              imageUrl: b.imageUrl
+            }));
             localStorage.setItem('showcase_bundles_local', JSON.stringify(toSave));
-          } catch(e) { console.error('persist showcase local error', e); }
+          } catch (e) {
+            console.error('persist showcase local error', e);
+          }
         };
       })();
       const SHOWCASE_IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
@@ -3780,10 +4173,10 @@ function factorial(int $n): int
         }
         if (action) {
           action.onclick = function() {
-            window.location = '?page=checkout&bundle_name=' + encodeURIComponent(bundle.name)
-              + '&main=' + bundle.main
-              + '&fillers=' + bundle.fillers
-              + '&greenery=' + bundle.greenery;
+            window.location = '?page=checkout&bundle_name=' + encodeURIComponent(bundle.name) +
+              '&main=' + bundle.main +
+              '&fillers=' + bundle.fillers +
+              '&greenery=' + bundle.greenery;
           };
           updateShowcaseStockStatus(bundle, stockStatus, action);
         }
@@ -3821,7 +4214,9 @@ function factorial(int $n): int
       function createShowcaseCard(bundle, index) {
         const card = document.createElement('div');
         card.className = 'showcase-card';
-        card.onclick = function() { openShowcaseModal(index); };
+        card.onclick = function() {
+          openShowcaseModal(index);
+        };
 
         const image = document.createElement('div');
         image.className = 'showcase-image';
@@ -3867,7 +4262,9 @@ function factorial(int $n): int
             sash.textContent = 'Best Seller';
             card.appendChild(sash);
           }
-        } catch(e) { console.warn('Best sash render error', e); }
+        } catch (e) {
+          console.warn('Best sash render error', e);
+        }
 
         if (SHOWCASE_IS_ADMIN) {
           const deleteBtn = document.createElement('button');
@@ -3875,7 +4272,10 @@ function factorial(int $n): int
           deleteBtn.className = 'showcase-delete-btn';
           deleteBtn.innerHTML = '&times;';
           deleteBtn.setAttribute('aria-label', 'Delete showcase item');
-          deleteBtn.onclick = function(event) { event.stopPropagation(); removeShowcaseItem(index); };
+          deleteBtn.onclick = function(event) {
+            event.stopPropagation();
+            removeShowcaseItem(index);
+          };
           card.appendChild(deleteBtn);
         }
 
@@ -3927,8 +4327,13 @@ function factorial(int $n): int
           const res = await fetch(endpoint, {
             method: 'POST',
             credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ action: 'delete_showcase', id: id })
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({
+              action: 'delete_showcase',
+              id: id
+            })
           });
           const data = await res.json();
           if (!res.ok) {
@@ -3938,7 +4343,9 @@ function factorial(int $n): int
           if (data.status === 'ok') {
             SHOWCASE_BUNDLES.splice(index, 1);
             renderShowcaseGrid();
-            try { if (window.saveShowcaseLocal) window.saveShowcaseLocal(); } catch(e) {}
+            try {
+              if (window.saveShowcaseLocal) window.saveShowcaseLocal();
+            } catch (e) {}
             closeShowcaseModal();
             closeDeleteConfirm();
           } else {
@@ -3997,9 +4404,13 @@ function factorial(int $n): int
 
         renderShowcaseGrid();
         // ensure persisted showcase local storage is up-to-date
-        try { if (window.saveShowcaseLocal) window.saveShowcaseLocal(); } catch(e) {}
+        try {
+          if (window.saveShowcaseLocal) window.saveShowcaseLocal();
+        } catch (e) {}
         // apply category restrictions UI for selected bundle
-        try { if (typeof updateCategoryRestrictions === 'function') updateCategoryRestrictions(); } catch(e) {}
+        try {
+          if (typeof updateCategoryRestrictions === 'function') updateCategoryRestrictions();
+        } catch (e) {}
 
         // show selected bundle info in cart header (right panel)
         try {
@@ -4018,12 +4429,16 @@ function factorial(int $n): int
               info.textContent = `Bundle: ${SELECTED_BUNDLE.name} — ${SELECTED_BUNDLE.main} main, ${SELECTED_BUNDLE.fillers} filler${SELECTED_BUNDLE.fillers===1? '':'s'}, ${SELECTED_BUNDLE.greenery} greenery`;
             }
           }
-        } catch(e) { console.error(e); }
+        } catch (e) {
+          console.error(e);
+        }
       });
 
       // Ensure local persisted showcases are saved when we modify the client list
       function persistShowcasesClient() {
-        try { if (window.saveShowcaseLocal) window.saveShowcaseLocal(); } catch(e) {}
+        try {
+          if (window.saveShowcaseLocal) window.saveShowcaseLocal();
+        } catch (e) {}
       }
 
       function openAddShowcaseModal() {
@@ -4090,7 +4505,9 @@ function factorial(int $n): int
             SHOWCASE_BUNDLES.push(bundle);
             renderShowcaseGrid();
             // persist client-side as fallback (for data-URL images)
-            try { if (window.saveShowcaseLocal) window.saveShowcaseLocal(); } catch(e) {}
+            try {
+              if (window.saveShowcaseLocal) window.saveShowcaseLocal();
+            } catch (e) {}
           } else {
             console.error('Failed to save showcase', data.message, data);
           }
@@ -4105,7 +4522,7 @@ function factorial(int $n): int
       }
     </script>
 
-  <!-- Checkout Page: Displays the checkout interface where users can search for products, view product categories, and add items to their cart -->
+    <!-- Checkout Page: Displays the checkout interface where users can search for products, view product categories, and add items to their cart -->
   <?php elseif ($page === 'checkout'): ?>
     <div class="checkout-wrap">
       <div class="co-left">
@@ -4130,10 +4547,10 @@ function factorial(int $n): int
 
         <!-- Display selected bundle information if coming from a bundle selection, including the required number of main flowers, fillers, and greenery to complete the bouquet -->
         <?php
-          $bundleName = isset($_GET['bundle_name']) ? trim($_GET['bundle_name']) : '';
-          $bundleMain = isset($_GET['main']) ? intval($_GET['main']) : 0;
-          $bundleFillers = isset($_GET['fillers']) ? intval($_GET['fillers']) : 0;
-          $bundleGreenery = isset($_GET['greenery']) ? intval($_GET['greenery']) : 0;
+        $bundleName = isset($_GET['bundle_name']) ? trim($_GET['bundle_name']) : '';
+        $bundleMain = isset($_GET['main']) ? intval($_GET['main']) : 0;
+        $bundleFillers = isset($_GET['fillers']) ? intval($_GET['fillers']) : 0;
+        $bundleGreenery = isset($_GET['greenery']) ? intval($_GET['greenery']) : 0;
         ?>
         <?php if ($bundleName !== ''): ?>
           <div class="alert alert-info" style="margin-bottom:18px; display:flex; flex-direction:column; gap:8px;">
@@ -4148,7 +4565,7 @@ function factorial(int $n): int
             <span class="cat-pill" data-cat="<?= htmlspecialchars($c['category_name'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($c['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
           <?php endforeach; ?>
         </div>
-        
+
         <!-- Display a success message if a sale was completed successfully, showing the order ID if available -->
         <?php if (isset($_GET['success'])): ?>
           <div class="alert alert-success" style="flex-shrink:0;">
@@ -4156,7 +4573,7 @@ function factorial(int $n): int
           </div>
         <?php endif; ?>
 
-      
+
         <!-- Product selection area: browse available products and add items to the cart -->
         <div class="co-products">
           <div class="prod-grid" id="prod-grid">
@@ -4191,7 +4608,7 @@ function factorial(int $n): int
                 </div>
                 <div class="prod-info">
                   <span class="badge badge-gray" style="font-size:10px; margin-bottom:6px; display:inline-block;"><?= htmlspecialchars($item['category_name'] ?? 'Uncategorized', ENT_QUOTES, 'UTF-8') ?></span>
-                  <?php if (!empty($item['disc_status']) && $item['disc_status'] == 1 && !empty($item['discount_value'])): 
+                  <?php if (!empty($item['disc_status']) && $item['disc_status'] == 1 && !empty($item['discount_value'])):
                     $dlabel = in_array(strtolower($item['discount_type'] ?? ''), ['percentage', 'percent']) ? (floatval($item['discount_value']) . '% OFF') : ('₱' . number_format($item['discount_value'], 2) . ' OFF');
                   ?>
                     <span class="badge badge-blue" style="font-size:10px; margin-bottom:6px; display:inline-block;"><?= htmlspecialchars($dlabel, ENT_QUOTES, 'UTF-8') ?></span>
@@ -4373,6 +4790,7 @@ function factorial(int $n): int
 
     <script>
       const TAX_RATE = 0.12;
+
       function formatItemCount(n) {
         const count = Number(n) || 0;
         return count === 1 ? (count + ' item') : (count + ' items');
@@ -4383,7 +4801,7 @@ function factorial(int $n): int
       // Bundle selection state used for checkout validation and UI restrictions
       const allProducts = <?= json_encode($inventory) ?>;
       // Normalize inventory product objects to include a consistent `category` property
-      (function(){
+      (function() {
         try {
           for (let i = 0; i < allProducts.length; i++) {
             const p = allProducts[i];
@@ -4392,7 +4810,9 @@ function factorial(int $n): int
             // make sure category is a simple string
             if (p.category === undefined || p.category === null) p.category = '';
           }
-        } catch(e) { console.error('normalize allProducts error', e); }
+        } catch (e) {
+          console.error('normalize allProducts error', e);
+        }
       })();
       // Selected showcase bundle (if any) passed via query params
       let SELECTED_BUNDLE = {
@@ -4404,9 +4824,16 @@ function factorial(int $n): int
 
       function setSelectedBundle(obj) {
         try {
-          SELECTED_BUNDLE = Object.assign({ name: '', main:0, fillers:0, greenery:0 }, obj || {});
+          SELECTED_BUNDLE = Object.assign({
+            name: '',
+            main: 0,
+            fillers: 0,
+            greenery: 0
+          }, obj || {});
           // persist selection
-          try { localStorage.setItem('selected_bundle', JSON.stringify(SELECTED_BUNDLE)); } catch(e) {}
+          try {
+            localStorage.setItem('selected_bundle', JSON.stringify(SELECTED_BUNDLE));
+          } catch (e) {}
           // update cart header info
           try {
             const cartTitle = document.querySelector('.co-cart-title');
@@ -4426,10 +4853,14 @@ function factorial(int $n): int
                 info.textContent = '';
               }
             }
-          } catch(e) {}
+          } catch (e) {}
           // update UI restrictions
-          try { if (typeof updateCategoryRestrictions === 'function') updateCategoryRestrictions(); } catch(e) {}
-        } catch(e) { console.error('setSelectedBundle error', e); }
+          try {
+            if (typeof updateCategoryRestrictions === 'function') updateCategoryRestrictions();
+          } catch (e) {}
+        } catch (e) {
+          console.error('setSelectedBundle error', e);
+        }
       }
 
       // restore persisted selection only when a bundle was actually selected for checkout
@@ -4439,11 +4870,18 @@ function factorial(int $n): int
           const sb = JSON.parse(localStorage.getItem('selected_bundle')) || null;
           if (sb && sb.name) setSelectedBundle(sb);
         } else if (SELECTED_BUNDLE && SELECTED_BUNDLE.name) {
-          try { localStorage.setItem('selected_bundle', JSON.stringify(SELECTED_BUNDLE)); } catch(e) {}
+          try {
+            localStorage.setItem('selected_bundle', JSON.stringify(SELECTED_BUNDLE));
+          } catch (e) {}
         }
-      } catch(e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
       // Loyalty points totals keyed by customer id for redeeming at checkout
-      const CUSTOMER_POINTS = <?= json_encode(array_reduce($customers, function($carry,$c){ $carry[$c['customer_id']] = intval($c['loyalty_points'] ?? 0); return $carry; }, []), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+      const CUSTOMER_POINTS = <?= json_encode(array_reduce($customers, function ($carry, $c) {
+                                $carry[$c['customer_id']] = intval($c['loyalty_points'] ?? 0);
+                                return $carry;
+                              }, []), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
       function getSelectedCustomerValue() {
         return selectedCustomerId;
@@ -4604,14 +5042,14 @@ function factorial(int $n): int
       window.addEventListener('DOMContentLoaded', initCustomerCombobox);
 
       // Initialize cart from server-side session
-      (async function loadServerCart(){
-        try{
+      (async function loadServerCart() {
+        try {
           const res = await fetch(window.location.pathname + '?get_cart=1');
           if (!res.ok) return;
           const j = await res.json();
           const srv = j.cart || {};
           cart = Object.keys(srv).map(sku => {
-            const qty = parseInt(srv[sku],10) || 0;
+            const qty = parseInt(srv[sku], 10) || 0;
             const prod = allProducts.find(p => p.sku === sku) || null;
             if (!prod) return null;
             let price = parseFloat(prod.price);
@@ -4625,49 +5063,74 @@ function factorial(int $n): int
                 price = Math.max(0, price - dvalue);
               }
             }
-            return { sku: sku, name: prod.product_name, price: price, qty: qty, stock: prod.stock_qty, category: prod.category_name || '' };
+            return {
+              sku: sku,
+              name: prod.product_name,
+              price: price,
+              qty: qty,
+              stock: prod.stock_qty,
+              category: prod.category_name || ''
+            };
           }).filter(Boolean);
           // if server returned empty cart, clear any stale localStorage cart to ensure cart starts empty
           if (!cart || cart.length === 0) {
             try {
               localStorage.removeItem('cart_local');
-            } catch(e) { console.error('clear local cart error', e); }
+            } catch (e) {
+              console.error('clear local cart error', e);
+            }
           }
           renderCart();
-        }catch(e){}
+        } catch (e) {}
       })();
 
       // Send cart updates to the server and handle JSON responses cleanly
-      async function serverCartAction(action, sku, qty){
+      async function serverCartAction(action, sku, qty) {
         console.debug('serverCartAction', action, sku, qty);
         const body = new URLSearchParams();
         body.append('cart_action', action);
         if (sku !== undefined) body.append('sku', sku);
         if (qty !== undefined) body.append('qty', String(qty));
-        try{
-          const res = await fetch(window.location.pathname, { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() });
+        try {
+          const res = await fetch(window.location.pathname, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: body.toString()
+          });
           console.debug('serverCartAction response status', res.status);
           const json = await res.json().catch(() => null);
           if (!res.ok) {
             // prefer server-provided message, fallback to statusText
             const msg = (json && (json.message || json.error)) ? (json.message || json.error) : (res.statusText || 'Server error');
-            return { status: 'error', message: msg, code: res.status };
+            return {
+              status: 'error',
+              message: msg,
+              code: res.status
+            };
           }
           return json;
-        }catch(e){
+        } catch (e) {
           console.error('serverCartAction network error', e);
-          return { status: 'error', message: e.message || 'Network error' };
+          return {
+            status: 'error',
+            message: e.message || 'Network error'
+          };
         }
       }
 
       async function addToCart(p) {
         console.debug('addToCart called', p);
-        if (p.stock_qty <= 0) { toast('Out of stock!', 'red'); return; }
+        if (p.stock_qty <= 0) {
+          toast('Out of stock!', 'red');
+          return;
+        }
         // Enforce selected bundle category limits (if any)
         try {
           const cat = (p.category || '').toString();
           const getKey = (c) => {
-            const s = (c||'').toLowerCase();
+            const s = (c || '').toLowerCase();
             if (s.indexOf('main') !== -1) return 'main';
             if (s.indexOf('fill') !== -1) return 'fillers';
             if (s.indexOf('green') !== -1) return 'greenery';
@@ -4681,19 +5144,41 @@ function factorial(int $n): int
               return;
             }
             if (allowed > 0) {
-              const currentCount = cart.reduce((s,i)=> s + ((i.category && getKey(i.category)===key) ? (i.qty||0) : 0), 0);
-              if (currentCount >= allowed) { toast(`You can only select ${allowed} ${key} for this bundle`, 'amber'); return; }
-              if (currentCount + 1 > allowed) { toast(`Selecting this would exceed the ${key} limit (${allowed})`, 'amber'); return; }
+              const currentCount = cart.reduce((s, i) => s + ((i.category && getKey(i.category) === key) ? (i.qty || 0) : 0), 0);
+              if (currentCount >= allowed) {
+                toast(`You can only select ${allowed} ${key} for this bundle`, 'amber');
+                return;
+              }
+              if (currentCount + 1 > allowed) {
+                toast(`Selecting this would exceed the ${key} limit (${allowed})`, 'amber');
+                return;
+              }
             }
           }
-        } catch(e) { console.error(e); }
+        } catch (e) {
+          console.error(e);
+        }
         const existing = cart.find(i => i.sku === p.sku);
         const currentQty = existing ? existing.qty : 0;
-        if (currentQty >= p.stock_qty) { toast('Max stock reached', 'amber'); return; }
+        if (currentQty >= p.stock_qty) {
+          toast('Max stock reached', 'amber');
+          return;
+        }
         const srv = await serverCartAction('add', p.sku, 1);
-        if (!srv || srv.status !== 'ok') { toast((srv && srv.message) ? srv.message : 'Cannot add item', 'red'); return; }
+        if (!srv || srv.status !== 'ok') {
+          toast((srv && srv.message) ? srv.message : 'Cannot add item', 'red');
+          return;
+        }
         const qty = parseInt((srv.cart || {})[p.sku] || 0, 10);
-        if (existing) existing.qty = qty; else cart.push({ sku: p.sku, name: p.product_name, price: parseFloat(p.price), qty: qty, stock: p.stock_qty, category: p.category || '' });
+        if (existing) existing.qty = qty;
+        else cart.push({
+          sku: p.sku,
+          name: p.product_name,
+          price: parseFloat(p.price),
+          qty: qty,
+          stock: p.stock_qty,
+          category: p.category || ''
+        });
         renderCart();
         toast(p.product_name + ' added');
       }
@@ -4710,14 +5195,21 @@ function factorial(int $n): int
         let html = '';
         // compute category counts to decide plus-button availability
         const getKey = (c) => {
-          const s = (c||'').toLowerCase();
+          const s = (c || '').toLowerCase();
           if (s.indexOf('main') !== -1) return 'main';
           if (s.indexOf('fill') !== -1) return 'fillers';
           if (s.indexOf('green') !== -1) return 'greenery';
           return null;
         };
-        const counts = { main:0, fillers:0, greenery:0 };
-        cart.forEach(i => { const k = getKey(i.category); if (k) counts[k] = (counts[k]||0) + (i.qty||0); });
+        const counts = {
+          main: 0,
+          fillers: 0,
+          greenery: 0
+        };
+        cart.forEach(i => {
+          const k = getKey(i.category);
+          if (k) counts[k] = (counts[k] || 0) + (i.qty || 0);
+        });
         cart.forEach((item, i) => {
           // determine if plus should be disabled for this item
           const key = getKey(item.category);
@@ -4742,23 +5234,36 @@ function factorial(int $n): int
         document.getElementById('cart_count').textContent = formatItemCount(cart.reduce((s, i) => s + i.qty, 0));
         calcTotals();
         // Update product tile availability based on current bundle selection and counts
-        try { updateCategoryRestrictions(); } catch(e) { /* ignore */ }
+        try {
+          updateCategoryRestrictions();
+        } catch (e) {
+          /* ignore */
+        }
         // persist cart locally for restore on refresh
-        try { localStorage.setItem('cart_local', JSON.stringify(cart)); } catch(e) {}
+        try {
+          localStorage.setItem('cart_local', JSON.stringify(cart));
+        } catch (e) {}
       }
 
       // Apply bundle-based restrictions to product tiles based on current cart contents
       function updateCategoryRestrictions() {
         const getKey = (c) => {
-          const s = (c||'').toLowerCase();
+          const s = (c || '').toLowerCase();
           if (s.indexOf('main') !== -1) return 'main';
           if (s.indexOf('fill') !== -1) return 'fillers';
           if (s.indexOf('green') !== -1) return 'greenery';
           return null;
         };
         // compute counts per key
-        const counts = { main:0, fillers:0, greenery:0 };
-        cart.forEach(i => { const k = getKey(i.category); if (k) counts[k] = (counts[k]||0) + (i.qty||0); });
+        const counts = {
+          main: 0,
+          fillers: 0,
+          greenery: 0
+        };
+        cart.forEach(i => {
+          const k = getKey(i.category);
+          if (k) counts[k] = (counts[k] || 0) + (i.qty || 0);
+        });
 
         document.querySelectorAll('.prod-tile').forEach(el => {
           const cat = el.dataset.cat || '';
@@ -4789,12 +5294,15 @@ function factorial(int $n): int
       async function chgQty(i, d) {
         const item = cart[i];
         const newQty = item.qty + d;
-        if (d > 0 && newQty > item.stock) { toast('Max stock reached', 'amber'); return; }
+        if (d > 0 && newQty > item.stock) {
+          toast('Max stock reached', 'amber');
+          return;
+        }
         // enforce bundle category caps when increasing
         try {
           if (d > 0 && SELECTED_BUNDLE && SELECTED_BUNDLE.name) {
             const getKey = (c) => {
-              const s = (c||'').toLowerCase();
+              const s = (c || '').toLowerCase();
               if (s.indexOf('main') !== -1) return 'main';
               if (s.indexOf('fill') !== -1) return 'fillers';
               if (s.indexOf('green') !== -1) return 'greenery';
@@ -4803,31 +5311,55 @@ function factorial(int $n): int
             const key = getKey(item.category || '');
             if (key) {
               const allowed = Number(SELECTED_BUNDLE[key] || 0);
-              const currentCount = cart.reduce((s,it) => s + ((it.category && getKey(it.category)===key) ? (it.qty||0) : 0), 0);
-              if (allowed === 0) { toast('No selections allowed for this category for the chosen bundle', 'amber'); return; }
-              if (currentCount >= allowed) { toast(`You can only select ${allowed} ${key} for this bundle`, 'amber'); return; }
-              if (currentCount + 1 > allowed) { toast(`Selecting this would exceed the ${key} limit (${allowed})`, 'amber'); return; }
+              const currentCount = cart.reduce((s, it) => s + ((it.category && getKey(it.category) === key) ? (it.qty || 0) : 0), 0);
+              if (allowed === 0) {
+                toast('No selections allowed for this category for the chosen bundle', 'amber');
+                return;
+              }
+              if (currentCount >= allowed) {
+                toast(`You can only select ${allowed} ${key} for this bundle`, 'amber');
+                return;
+              }
+              if (currentCount + 1 > allowed) {
+                toast(`Selecting this would exceed the ${key} limit (${allowed})`, 'amber');
+                return;
+              }
             }
           }
-        } catch(e) { console.error(e); }
-        const srv = await serverCartAction('set', item.sku, Math.max(0,newQty));
-        if (!srv || srv.status !== 'ok') { toast((srv && srv.message) ? srv.message : 'Cannot update cart', 'red'); return; }
-        const updatedQty = parseInt((srv.cart || {})[item.sku] || 0,10);
-        if (updatedQty <= 0) cart.splice(i,1); else cart[i].qty = updatedQty;
+        } catch (e) {
+          console.error(e);
+        }
+        const srv = await serverCartAction('set', item.sku, Math.max(0, newQty));
+        if (!srv || srv.status !== 'ok') {
+          toast((srv && srv.message) ? srv.message : 'Cannot update cart', 'red');
+          return;
+        }
+        const updatedQty = parseInt((srv.cart || {})[item.sku] || 0, 10);
+        if (updatedQty <= 0) cart.splice(i, 1);
+        else cart[i].qty = updatedQty;
         renderCart();
       }
 
       async function rmItem(i) {
         const sku = cart[i].sku;
         const srv = await serverCartAction('remove', sku, 0);
-        if (!srv || srv.status !== 'ok') { toast((srv && srv.message) ? srv.message : 'Cannot remove item', 'red'); return; }
-        cart.splice(i,1);
+        if (!srv || srv.status !== 'ok') {
+          toast((srv && srv.message) ? srv.message : 'Cannot remove item', 'red');
+          return;
+        }
+        cart.splice(i, 1);
         renderCart();
       }
 
       async function voidCart() {
-        try { console.debug('voidCart invoked', { cartLength: cart ? cart.length : undefined }); } catch(e){}
-        if (!cart || !cart.length) { return; }
+        try {
+          console.debug('voidCart invoked', {
+            cartLength: cart ? cart.length : undefined
+          });
+        } catch (e) {}
+        if (!cart || !cart.length) {
+          return;
+        }
 
         // Attempt to clear server cart but do not block UI clearing on failure
         try {
@@ -4840,35 +5372,72 @@ function factorial(int $n): int
         }
 
         // Clear client-side cart and persisted state regardless of server result
-        try { cart = []; } catch(e) {}
-        try { setCustomerSelection('', 'Walk-in Customer'); } catch(e){}
-        try { setSelectedBundle({ name: '', main:0, fillers:0, greenery:0 }); } catch(e){}
-        try { localStorage.removeItem('cart_local'); localStorage.removeItem('selected_bundle'); } catch(e){}
-        try { const promo = document.getElementById('promo_select'); if (promo) { promo.value = '0'; } } catch(e){}
-        try { const pin = document.getElementById('points_input'); if (pin) pin.value = 0; updatePointsUI(); } catch(e){}
+        try {
+          cart = [];
+        } catch (e) {}
+        try {
+          setCustomerSelection('', 'Walk-in Customer');
+        } catch (e) {}
+        try {
+          setSelectedBundle({
+            name: '',
+            main: 0,
+            fillers: 0,
+            greenery: 0
+          });
+        } catch (e) {}
+        try {
+          localStorage.removeItem('cart_local');
+          localStorage.removeItem('selected_bundle');
+        } catch (e) {}
+        try {
+          const promo = document.getElementById('promo_select');
+          if (promo) {
+            promo.value = '0';
+          }
+        } catch (e) {}
+        try {
+          const pin = document.getElementById('points_input');
+          if (pin) pin.value = 0;
+          updatePointsUI();
+        } catch (e) {}
 
         // Hide any visible toast/validation messages immediately
         try {
           const t = document.getElementById('_toast');
-          if (t) { clearTimeout(t._t); t.style.opacity = '0'; }
-        } catch(e) {}
+          if (t) {
+            clearTimeout(t._t);
+            t.style.opacity = '0';
+          }
+        } catch (e) {}
 
         renderCart();
         // Ensure totals are recalculated and bundle validation is reset
-        try { calcTotals(); } catch(e) {}
+        try {
+          calcTotals();
+        } catch (e) {}
         // Informational toast (non-warning)
-        try { toast('Basket cleared'); } catch(e) {}
+        try {
+          toast('Basket cleared');
+        } catch (e) {}
       }
 
       function holdSale() {
-        if (!cart.length) { toast('Nothing to hold', 'amber'); return; }
+        if (!cart.length) {
+          toast('Nothing to hold', 'amber');
+          return;
+        }
         // store cart plus currently selected customer and bundle so recall restores both
-        const payload = { cart: cart, customer: getSelectedCustomerValue(), bundle: SELECTED_BUNDLE };
+        const payload = {
+          cart: cart,
+          customer: getSelectedCustomerValue(),
+          bundle: SELECTED_BUNDLE
+        };
         const held = JSON.stringify(payload);
         // save locally first
         sessionStorage.setItem('held_cart', held);
         // clear server cart so cashier can start new transaction
-        (async function(){
+        (async function() {
           const srv = await serverCartAction('clear');
           if (!srv || srv.status !== 'ok') {
             // restore local held if server clear failed
@@ -4886,23 +5455,42 @@ function factorial(int $n): int
 
       function recallHeld() {
         const h = sessionStorage.getItem('held_cart');
-        if (!h) { toast('No held sale', 'amber'); return; }
+        if (!h) {
+          toast('No held sale', 'amber');
+          return;
+        }
         let heldObj;
-        try { heldObj = JSON.parse(h); } catch (e) { sessionStorage.removeItem('held_cart'); toast('No held sale', 'amber'); return; }
+        try {
+          heldObj = JSON.parse(h);
+        } catch (e) {
+          sessionStorage.removeItem('held_cart');
+          toast('No held sale', 'amber');
+          return;
+        }
         const heldArr = Array.isArray(heldObj.cart) ? heldObj.cart : [];
         const heldCustomer = heldObj.customer || '';
-        if (!Array.isArray(heldArr) || heldArr.length === 0) { sessionStorage.removeItem('held_cart'); toast('No held sale', 'amber'); return; }
-        (async function(){
+        if (!Array.isArray(heldArr) || heldArr.length === 0) {
+          sessionStorage.removeItem('held_cart');
+          toast('No held sale', 'amber');
+          return;
+        }
+        (async function() {
           // clear current server cart first
           const cleared = await serverCartAction('clear');
-          if (!cleared || cleared.status !== 'ok') { toast((cleared && cleared.message) ? cleared.message : 'Cannot recall sale', 'red'); return; }
+          if (!cleared || cleared.status !== 'ok') {
+            toast((cleared && cleared.message) ? cleared.message : 'Cannot recall sale', 'red');
+            return;
+          }
           // set each SKU on server
           for (const it of heldArr) {
             const sku = it.sku;
             const qty = parseInt(it.qty || 0, 10);
             if (!sku || qty <= 0) continue;
             const res = await serverCartAction('set', sku, qty);
-            if (!res || res.status !== 'ok') { toast((res && res.message) ? res.message : 'Failed to restore held sale', 'red'); return; }
+            if (!res || res.status !== 'ok') {
+              toast((res && res.message) ? res.message : 'Failed to restore held sale', 'red');
+              return;
+            }
           }
           // restore selected customer
           if (heldCustomer !== '') {
@@ -4912,13 +5500,20 @@ function factorial(int $n): int
             setCustomerSelection(heldCustomer, label || undefined);
           }
           // update local cart to heldArr (map to expected shape) and restore category if available
-          cart = heldArr.map(it => ({ sku: it.sku, name: it.name || '', price: parseFloat(it.price || 0), qty: parseInt(it.qty || 0,10), stock: it.stock || 999, category: it.category || '' }));
+          cart = heldArr.map(it => ({
+            sku: it.sku,
+            name: it.name || '',
+            price: parseFloat(it.price || 0),
+            qty: parseInt(it.qty || 0, 10),
+            stock: it.stock || 999,
+            category: it.category || ''
+          }));
           // restore selected bundle if present in held payload
           try {
             if (heldObj.bundle && heldObj.bundle.name) {
               setSelectedBundle(heldObj.bundle);
             }
-          } catch(e) {}
+          } catch (e) {}
           sessionStorage.removeItem('held_cart');
           renderCart();
           toast('Sale recalled');
@@ -5030,14 +5625,21 @@ function factorial(int $n): int
         try {
           if (SELECTED_BUNDLE && SELECTED_BUNDLE.name) {
             const getKey = (c) => {
-              const s = (c||'').toLowerCase();
+              const s = (c || '').toLowerCase();
               if (s.indexOf('main') !== -1) return 'main';
               if (s.indexOf('fill') !== -1) return 'fillers';
               if (s.indexOf('green') !== -1) return 'greenery';
               return null;
             };
-            const counts = { main:0, fillers:0, greenery:0 };
-            cart.forEach(i => { const k = getKey(i.category); if (k) counts[k] = (counts[k]||0) + (i.qty||0); });
+            const counts = {
+              main: 0,
+              fillers: 0,
+              greenery: 0
+            };
+            cart.forEach(i => {
+              const k = getKey(i.category);
+              if (k) counts[k] = (counts[k] || 0) + (i.qty || 0);
+            });
             const okMain = (counts.main === Number(SELECTED_BUNDLE.main || 0));
             const okFill = (counts.fillers === Number(SELECTED_BUNDLE.fillers || 0));
             const okGreen = (counts.greenery === Number(SELECTED_BUNDLE.greenery || 0));
@@ -5046,7 +5648,9 @@ function factorial(int $n): int
               return;
             }
           }
-        } catch(e) { console.error(e); }
+        } catch (e) {
+          console.error(e);
+        }
 
         updateReceipt();
         document.getElementById('pay_overlay').classList.add('open');
@@ -5118,8 +5722,12 @@ function factorial(int $n): int
                 return;
               }
               if (tenderedVal < totalDue) {
-                const shortage = (totalDue - tenderedVal).toLocaleString(undefined, { minimumFractionDigits: 2 });
-                tenderedField.setCustomValidity('Amount received must be at least ₱' + totalDue.toLocaleString(undefined, { minimumFractionDigits: 2 }) + ' (short by ₱' + shortage + ')');
+                const shortage = (totalDue - tenderedVal).toLocaleString(undefined, {
+                  minimumFractionDigits: 2
+                });
+                tenderedField.setCustomValidity('Amount received must be at least ₱' + totalDue.toLocaleString(undefined, {
+                  minimumFractionDigits: 2
+                }) + ' (short by ₱' + shortage + ')');
                 tenderedField.reportValidity();
                 tenderedField.focus();
                 return;
@@ -5133,13 +5741,33 @@ function factorial(int $n): int
               const account = (accountEl.value || '').trim();
               const proof = proofEl.files.length > 0;
               // Account/proof presence
-              if (!account) { accountEl.setCustomValidity('Please enter Account Name'); accountEl.reportValidity(); accountEl.focus(); return; }
-              if (!proof) { proofEl.setCustomValidity('Please upload Transaction Proof'); proofEl.reportValidity(); proofEl.focus(); return; }
+              if (!account) {
+                accountEl.setCustomValidity('Please enter Account Name');
+                accountEl.reportValidity();
+                accountEl.focus();
+                return;
+              }
+              if (!proof) {
+                proofEl.setCustomValidity('Please upload Transaction Proof');
+                proofEl.reportValidity();
+                proofEl.focus();
+                return;
+              }
               // Method-specific contact/reference validation
               if (pm.value === 'GCash') {
-                if (!/^[0-9]{13}$/.test(contact)) { contactEl.setCustomValidity('Reference Number must be exactly 13 digits (numbers only)'); contactEl.reportValidity(); contactEl.focus(); return; }
+                if (!/^[0-9]{13}$/.test(contact)) {
+                  contactEl.setCustomValidity('Reference Number must be exactly 13 digits (numbers only)');
+                  contactEl.reportValidity();
+                  contactEl.focus();
+                  return;
+                }
               } else if (pm.value === 'Maya') {
-                if (!/^[0-9]{12}$/.test(contact)) { contactEl.setCustomValidity('Reference ID must be exactly 12 digits (numbers only)'); contactEl.reportValidity(); contactEl.focus(); return; }
+                if (!/^[0-9]{12}$/.test(contact)) {
+                  contactEl.setCustomValidity('Reference ID must be exactly 12 digits (numbers only)');
+                  contactEl.reportValidity();
+                  contactEl.focus();
+                  return;
+                }
               }
             }
 
@@ -5149,7 +5777,11 @@ function factorial(int $n): int
               // mark this request as AJAX so server could respond differently if needed
               fd.append('_ajax', '1');
 
-              const resp = await fetch('?page=checkout', { method: 'POST', body: fd, credentials: 'same-origin' });
+              const resp = await fetch('?page=checkout', {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin'
+              });
               if (!resp.ok) {
                 toast('Failed to complete sale', 'red');
                 return;
@@ -5166,7 +5798,10 @@ function factorial(int $n): int
                 } else if (j && j.status === 'error') {
                   const err = j.message || 'Checkout failed';
                   const ed = document.getElementById('payment_error');
-                  if (ed) { ed.innerHTML = err; ed.style.display = 'block'; }
+                  if (ed) {
+                    ed.innerHTML = err;
+                    ed.style.display = 'block';
+                  }
                   toast(err, 'red');
                   return;
                 }
@@ -5202,12 +5837,18 @@ function factorial(int $n): int
           if (rItems) rItems.innerHTML = html;
           // populate hidden bundle fields for server submission
           try {
-            const fbn = document.getElementById('f_bundle_name'); if (fbn) fbn.value = SELECTED_BUNDLE.name || '';
-            const fb1 = document.getElementById('f_bundle_main'); if (fb1) fb1.value = SELECTED_BUNDLE.main || 0;
-            const fb2 = document.getElementById('f_bundle_fillers'); if (fb2) fb2.value = SELECTED_BUNDLE.fillers || 0;
-            const fb3 = document.getElementById('f_bundle_greenery'); if (fb3) fb3.value = SELECTED_BUNDLE.greenery || 0;
-          } catch(e) {}
-        } catch(e) { console.error(e); }
+            const fbn = document.getElementById('f_bundle_name');
+            if (fbn) fbn.value = SELECTED_BUNDLE.name || '';
+            const fb1 = document.getElementById('f_bundle_main');
+            if (fb1) fb1.value = SELECTED_BUNDLE.main || 0;
+            const fb2 = document.getElementById('f_bundle_fillers');
+            if (fb2) fb2.value = SELECTED_BUNDLE.fillers || 0;
+            const fb3 = document.getElementById('f_bundle_greenery');
+            if (fb3) fb3.value = SELECTED_BUNDLE.greenery || 0;
+          } catch (e) {}
+        } catch (e) {
+          console.error(e);
+        }
         calcTotals();
         // Populate payment method and wallet preview fields
         try {
@@ -5225,7 +5866,9 @@ function factorial(int $n): int
           } else {
             if (walletRow) walletRow.style.display = 'none';
           }
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          /* ignore */
+        }
       }
 
       // Switch form fields when payment method changes between cash and digital wallet
@@ -5233,7 +5876,7 @@ function factorial(int $n): int
         const cashArea = document.getElementById('cash_area');
         const walletArea = document.getElementById('digital_wallet_area');
         const errorDiv = document.getElementById('payment_error');
-        
+
         if (method === 'Cash') {
           cashArea.style.display = 'block';
           walletArea.style.display = 'none';
@@ -5242,13 +5885,21 @@ function factorial(int $n): int
           document.getElementById('wallet_account_name').value = '';
           document.getElementById('wallet_proof').value = '';
           // reset wallet label and placeholder
-          const wlbl = document.getElementById('wallet_contact_label'); if (wlbl) wlbl.textContent = 'Contact Number';
-          const winput = document.getElementById('wallet_contact'); if (winput) winput.placeholder = 'e.g., 09123456789';
+          const wlbl = document.getElementById('wallet_contact_label');
+          if (wlbl) wlbl.textContent = 'Contact Number';
+          const winput = document.getElementById('wallet_contact');
+          if (winput) winput.placeholder = 'e.g., 09123456789';
           // clear any visible payment error and custom validity on wallet inputs
           errorDiv.style.display = 'none';
-          try { document.getElementById('wallet_contact').setCustomValidity(''); } catch(e){}
-          try { document.getElementById('wallet_account_name').setCustomValidity(''); } catch(e){}
-          try { document.getElementById('wallet_proof').setCustomValidity(''); } catch(e){}
+          try {
+            document.getElementById('wallet_contact').setCustomValidity('');
+          } catch (e) {}
+          try {
+            document.getElementById('wallet_account_name').setCustomValidity('');
+          } catch (e) {}
+          try {
+            document.getElementById('wallet_proof').setCustomValidity('');
+          } catch (e) {}
         } else if (method === 'GCash' || method === 'Maya') {
           cashArea.style.display = 'none';
           walletArea.style.display = 'block';
@@ -5257,19 +5908,19 @@ function factorial(int $n): int
           // set wallet label/placeholder for selected method
           const wlbl = document.getElementById('wallet_contact_label');
           const winput = document.getElementById('wallet_contact');
-            if (wlbl) wlbl.textContent = method === 'GCash' ? 'Reference Number' : 'Reference ID';
-            if (winput) {
-              winput.placeholder = method === 'GCash' ? '13-digit reference number (numbers only)' : '12-digit reference ID (numbers only)';
-              winput.maxLength = method === 'GCash' ? 13 : 12;
-              // ensure any non-digit characters are removed and length capped
-              winput.value = (winput.value || '').replace(/\D/g, '').slice(0, winput.maxLength);
-            }
+          if (wlbl) wlbl.textContent = method === 'GCash' ? 'Reference Number' : 'Reference ID';
+          if (winput) {
+            winput.placeholder = method === 'GCash' ? '13-digit reference number (numbers only)' : '12-digit reference ID (numbers only)';
+            winput.maxLength = method === 'GCash' ? 13 : 12;
+            // ensure any non-digit characters are removed and length capped
+            winput.value = (winput.value || '').replace(/\D/g, '').slice(0, winput.maxLength);
+          }
           errorDiv.style.display = 'none';
         }
-        
+
         validatePaymentForm();
       }
-      
+
       // Validate payment form inputs and display warnings for invalid entries
       function validatePaymentForm() {
         const pm = document.querySelector('input[name="payment_method"]:checked');
@@ -5278,8 +5929,10 @@ function factorial(int $n): int
         if (!submitBtn) submitBtn = document.querySelector('button[type="submit"]#submit_sale_btn');
         // default to enabled; we'll disable if validation fails
         if (submitBtn) submitBtn.disabled = false;
-        
-        console.debug('validatePaymentForm:', { pm: pm ? pm.value : null });
+
+        console.debug('validatePaymentForm:', {
+          pm: pm ? pm.value : null
+        });
         if (pm && (pm.value === 'GCash' || pm.value === 'Maya')) {
           // Validate digital wallet fields
           const contactEl = document.getElementById('wallet_contact');
@@ -5295,9 +5948,13 @@ function factorial(int $n): int
           if (proofEl) proofEl.required = true;
           const amtEl = document.getElementById('amount_tendered');
           if (amtEl) amtEl.required = false;
-          
+
           if (!contact || !account || !proof) {
-            console.debug('wallet validation failed', { contact, account, proof });
+            console.debug('wallet validation failed', {
+              contact,
+              account,
+              proof
+            });
             const label = pm.value === 'GCash' ? 'Reference Number' : 'Reference ID';
             if (!contact) {
               errorDiv.innerHTML = '⚠ Please enter ' + label;
@@ -5329,9 +5986,15 @@ function factorial(int $n): int
             console.debug('wallet validation passed');
             errorDiv.style.display = 'none';
             // clear custom validity
-            if (contactEl) { contactEl.setCustomValidity(''); }
-            if (accountEl) { accountEl.setCustomValidity(''); }
-            if (proofEl) { proofEl.setCustomValidity(''); }
+            if (contactEl) {
+              contactEl.setCustomValidity('');
+            }
+            if (accountEl) {
+              accountEl.setCustomValidity('');
+            }
+            if (proofEl) {
+              proofEl.setCustomValidity('');
+            }
           }
         } else if (pm && pm.value === 'Cash') {
           // Validate cash field
@@ -5342,9 +6005,15 @@ function factorial(int $n): int
 
           if (tendered > 0 && tendered >= total) {
             errorDiv.style.display = 'none';
-            console.debug('cash validation passed', { tendered, total });
+            console.debug('cash validation passed', {
+              tendered,
+              total
+            });
           } else if (tendered > 0 && tendered < total) {
-            console.debug('cash insufficient', { tendered, total });
+            console.debug('cash insufficient', {
+              tendered,
+              total
+            });
           } else {
             console.debug('cash no tendered yet');
           }
@@ -5374,19 +6043,22 @@ function factorial(int $n): int
         const change = tendered - total;
         const paymentMethod = document.querySelector('input[name="payment_method"]:checked');
         const isCash = paymentMethod && paymentMethod.value === 'Cash';
-        
+
         // Update change display
         document.getElementById('r_change').innerHTML = change >= 0 ? '&#8369;' + change.toLocaleString(undefined, {
           minimumFractionDigits: 2
         }) : '&#8212;';
-        
+
         // Validate and show/hide error for cash payments
         const errorDiv = document.getElementById('payment_error');
         const submitBtn = document.getElementById('submit_sale_btn');
-        
+
         if (isCash) {
           if (tendered > 0 && tendered < total) {
-            const shortage = (total - tendered).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const shortage = (total - tendered).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            });
             errorDiv.innerHTML = '⚠ Insufficient amount. Short by &#8369;' + shortage + '.';
             errorDiv.style.display = 'block';
             if (submitBtn) submitBtn.disabled = true;
@@ -5402,7 +6074,7 @@ function factorial(int $n): int
           if (submitBtn) submitBtn.disabled = false;
         }
       }
-      
+
       // Add event listeners for digital wallet fields
       // Wire up DOM-ready event listeners for payment form, inputs and debug helpers
       document.addEventListener('DOMContentLoaded', function() {
@@ -5411,11 +6083,15 @@ function factorial(int $n): int
         const walletProof = document.getElementById('wallet_proof');
         const amountTendered = document.getElementById('amount_tendered');
         const pmChecked = document.querySelector('input[name="payment_method"]:checked');
-        
+
         if (walletContact) walletContact.addEventListener('input', validatePaymentForm);
         if (walletAccount) walletAccount.addEventListener('input', validatePaymentForm);
         if (walletProof) walletProof.addEventListener('change', validatePaymentForm);
-        if (amountTendered) amountTendered.addEventListener('input', function() { fmtCash(this); calcChange(); validatePaymentForm(); });
+        if (amountTendered) amountTendered.addEventListener('input', function() {
+          fmtCash(this);
+          calcChange();
+          validatePaymentForm();
+        });
 
         // Initialize payment form state on load
         validatePaymentForm();
@@ -5428,11 +6104,13 @@ function factorial(int $n): int
             console.debug('submit button clicked - disabled=', this.disabled);
             try {
               const r = this.getBoundingClientRect();
-              const cx = Math.round(r.left + r.width/2);
-              const cy = Math.round(r.top + r.height/2);
+              const cx = Math.round(r.left + r.width / 2);
+              const cy = Math.round(r.top + r.height / 2);
               const el = document.elementFromPoint(cx, cy);
               console.debug('elementFromPoint at button center:', el, 'coords:', cx, cy);
-            } catch (err) { console.error('elemFromPoint error', err); }
+            } catch (err) {
+              console.error('elemFromPoint error', err);
+            }
           });
         }
 
@@ -5734,17 +6412,17 @@ function factorial(int $n): int
                     <?php if (!empty($sessionHistoryRows)): ?>
                       <?php foreach ($sessionHistoryRows as $sessionRow): ?>
                         <?php
-                          $loginDate = date('M d, Y', strtotime($sessionRow['login_date']));
-                          $loginTime = date('g:i A', strtotime($sessionRow['login_time']));
-                          $isActive = $sessionRow['logout_time'] === null;
-                          $logoutTime = $isActive ? '<span class="text-success" style="font-weight:600;">Active</span>' : date('g:i A', strtotime($sessionRow['logout_time']));
-                          $durationText = htmlspecialchars($sessionRow['duration'] ?: '00:00:00', ENT_QUOTES, 'UTF-8');
+                        $loginDate = date('M d, Y', strtotime($sessionRow['login_date']));
+                        $loginTime = date('g:i A', strtotime($sessionRow['login_time']));
+                        $isActive = $sessionRow['logout_time'] === null;
+                        $logoutTime = $isActive ? '<span class="text-success" style="font-weight:600;">Active</span>' : date('g:i A', strtotime($sessionRow['logout_time']));
+                        $durationText = htmlspecialchars($sessionRow['duration'] ?: '00:00:00', ENT_QUOTES, 'UTF-8');
                         ?>
                         <tr class="<?= $isActive ? 'active-session-row' : '' ?>">
                           <td><?= htmlspecialchars($loginDate, ENT_QUOTES, 'UTF-8') ?></td>
                           <td><?= htmlspecialchars($loginTime, ENT_QUOTES, 'UTF-8') ?></td>
                           <td><?= $logoutTime ?></td>
-                          <td class="session-duration-cell" data-active="<?= $isActive ? '1' : '0' ?>" data-login="<?= htmlspecialchars($sessionRow['login_time'], ENT_QUOTES, 'UTF-8') ?>" data-login-ts="<?= intval(strtotime($sessionRow['login_time'])) ?>" data-prior-duration="<?= isset($sessionRow['duration_seconds']) ? (int)$sessionRow['duration_seconds'] : 0 ?>">
+                          <td class="session-duration-cell" data-active="<?= $isActive ? '1' : '0' ?>" data-login="<?= htmlspecialchars($sessionRow['login_time'], ENT_QUOTES, 'UTF-8') ?>" data-login-ts="<?= intval(strtotime($sessionRow['login_time'])) ?>" data-prior-duration="<?= isset($sessionRow['duration']) ? (int)$sessionRow['duration'] : 0 ?>">
                             <?php if ($isActive): ?>
                               <span class="live-session-timer"><?= $durationText ?></span>
                             <?php else: ?>
@@ -5916,11 +6594,11 @@ function factorial(int $n): int
             <!-- Products -->
             <div class="tab-pane <?= $activeTab === 'items' ? 'active' : '' ?>">
               <div class="cat-filter" id="inv-cat-filter">
-  <span class="cat-pill active" data-cat="">All</span>
-  <span class="cat-pill" data-cat="Main">Main</span>
-  <span class="cat-pill" data-cat="Filler">Filler</span>
-  <span class="cat-pill" data-cat="Greenery">Greenery</span>
-</div>
+                <span class="cat-pill active" data-cat="">All</span>
+                <span class="cat-pill" data-cat="Main">Main</span>
+                <span class="cat-pill" data-cat="Filler">Filler</span>
+                <span class="cat-pill" data-cat="Greenery">Greenery</span>
+              </div>
 
               <?php if (empty($inventory)): ?>
                 <div class="card" style="text-align:center; padding:40px; color:var(--text-3);">No products yet. Click <strong>Add Product</strong> to get started.</div>
@@ -5933,7 +6611,7 @@ function factorial(int $n): int
                     $ep_with_vat = $ep * (1 + $taxRate);
                     $base_with_vat = floatval($item['price']) * (1 + $taxRate);
                   ?>
-                  <div class="inv-card" data-cat="<?= htmlspecialchars($item['category_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>" onclick="openEditModal(<?= htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8') ?>)">
+                    <div class="inv-card" data-cat="<?= htmlspecialchars($item['category_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>" onclick="openEditModal(<?= htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8') ?>)">
                       <form data-confirm="Delete this product?" method="POST" action="?page=inventory&tab=items" style="position:absolute; top:8px; right:8px; z-index:2;">
                         <input type="hidden" name="delete_sku" value="<?= $item['sku'] ?>">
                         <button type="submit" class="inv-del-btn" onclick="event.stopPropagation();" title="Delete">&times;</button>
@@ -5957,7 +6635,7 @@ function factorial(int $n): int
                           <span class="badge badge-gray" style="font-size:10px;"><?= htmlspecialchars($item['category_name'] ?? 'Uncategorized', ENT_QUOTES, 'UTF-8') ?></span>
                           <?php if ($item['stock_qty'] < 10): ?><span class="badge badge-red" style="font-size:10px;"><?= $item['stock_qty'] ?> left</span><?php endif; ?>
                         </div>
-                        
+
                         <div class="inv-card-name"><?= htmlspecialchars($item['product_name'], ENT_QUOTES, 'UTF-8') ?></div>
                         <div class="inv-card-sku"><?= $item['sku'] ?></div>
                         <div class="inv-card-price">
@@ -5968,7 +6646,10 @@ function factorial(int $n): int
                         <div class="inv-actions" style="margin-top: 10px; width: 100%;">
                           <?php if (!preg_match('/-V\\d+$/i', $item['sku'])): ?>
                             <button type="button" class="btn-variant" style="width: 100%;" onclick="event.stopPropagation(); openVariantModal(<?= htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8') ?>)">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                              </svg>
                               Add Variant
                             </button>
                           <?php else: ?>
@@ -6065,7 +6746,7 @@ function factorial(int $n): int
                     <?php else: foreach ($discounts as $d):
                       $is_active = $d['status'] == 1;
                       $dt = strtolower($d['discount_type'] ?? '');
-                      $vdisp = in_array($dt, ['percentage','percent']) ? $d['discount_value'] . '%' : '&#8369;' . number_format($d['discount_value'], 2);
+                      $vdisp = in_array($dt, ['percentage', 'percent']) ? $d['discount_value'] . '%' : '&#8369;' . number_format($d['discount_value'], 2);
                     ?>
                       <div class="promo-card <?= !$is_active ? 'inactive' : '' ?>">
                         <div>
@@ -6113,12 +6794,14 @@ function factorial(int $n): int
                   <div class="form-group"><label>Category</label>
                     <select name="category_id" id="form_cat">
                       <option value="">Uncategorized</option>
-                        <?php
-                        $predefinedCats = ['Main', 'Filler', 'Greenery'];
-                        $catIdMap = [];
-                        foreach ($cats as $c) { $catIdMap[strtolower($c['category_name'])] = $c['category_id']; }
-                        foreach ($predefinedCats as $pn):
-                          $pid = isset($catIdMap[strtolower($pn)]) ? $catIdMap[strtolower($pn)] : '';
+                      <?php
+                      $predefinedCats = ['Main', 'Filler', 'Greenery'];
+                      $catIdMap = [];
+                      foreach ($cats as $c) {
+                        $catIdMap[strtolower($c['category_name'])] = $c['category_id'];
+                      }
+                      foreach ($predefinedCats as $pn):
+                        $pid = isset($catIdMap[strtolower($pn)]) ? $catIdMap[strtolower($pn)] : '';
                       ?>
                         <option value="<?= htmlspecialchars($pid, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($pn, ENT_QUOTES, 'UTF-8') ?></option>
                       <?php endforeach; ?>
@@ -6152,22 +6835,22 @@ function factorial(int $n): int
               </div>
               <form method="POST" action="?page=inventory&tab=items" enctype="multipart/form-data">
                 <input type="hidden" name="original_sku" id="variant_orig_sku">
-                
+
                 <div class="form-group">
                   <label>Base Product</label>
                   <input type="text" id="variant_orig_name" readonly style="background:#f4f1ee; color:#777;">
                 </div>
-                
+
                 <div class="form-group">
                   <label>New Variant SKU / ID</label>
                   <input type="text" name="new_sku" id="variant_new_sku" placeholder="e.g. PR-001-V1" pattern="^[A-Za-z]+-[0-9]{3}-V[0-9]+$" title="Variant SKU is automatically generated from the parent SKU, e.g. PR-001-V1." readonly style="background:#f4f1ee; color:#333; cursor:not-allowed;" required>
                 </div>
-                
+
                 <div class="form-group">
                   <label>Variant Name</label>
                   <input type="text" name="variant_name" id="variant_new_name" placeholder="Enter variant name" required>
                 </div>
-                
+
                 <div class="form-group">
                   <label>Initial Stock Quantity</label>
                   <input type="number" name="variant_qty" placeholder="0" min="0" required>
@@ -6178,7 +6861,7 @@ function factorial(int $n): int
                   <input type="file" name="product_image" accept="image/*" style="padding:6px; border:1px solid #ccc; width:100%; border-radius:4px;">
                   <span style="font-size:11px; color:#666;">Leave empty to inherit the parent product's image.</span>
                 </div>
-                
+
                 <p style="font-size:12px; color:#777; margin-bottom:14px;">
                   * Base price, Category, Promotions, and Images are automatically inherited.
                 </p>
@@ -6204,9 +6887,9 @@ function factorial(int $n): int
                 });
               }
               return base + '-V' + String(maxIndex + 1);
-          }
+            }
 
-          function openVariantModal(item) {
+            function openVariantModal(item) {
               const generatedSku = getNextVariantSku(item.sku);
               document.getElementById('variant_orig_sku').value = item.sku;
               document.getElementById('variant_orig_name').value = item.product_name + ' (' + item.sku + ')';
@@ -6221,8 +6904,8 @@ function factorial(int $n): int
               }
 
               document.getElementById('addVariantModal').classList.add('open');
-          }
-          </script>          
+            }
+          </script>
 
           <!-- Add Category Modal -->
           <div class="overlay" id="addCatModal">
@@ -6279,13 +6962,13 @@ function factorial(int $n): int
           </div>
 
           <script>
-              function openAddModal() {
+            function openAddModal() {
               document.getElementById('prod_modal_title').textContent = 'New Product';
               document.getElementById('prod_submit_btn').name = 'add_product';
               document.getElementById('prod_form').reset();
               document.getElementById('hidden_sku').value = '';
               document.getElementById('image_preview_container').style.display = 'none';
-              
+
               // Wipes any cached file selection out of the input element
               const imgInput = document.getElementById('product_image_input');
               if (imgInput) imgInput.value = '';
@@ -6328,11 +7011,12 @@ function factorial(int $n): int
               }
 
               // clear VAT display
-              const vatEl = document.getElementById('form_vat'); if (vatEl) vatEl.value = '';
+              const vatEl = document.getElementById('form_vat');
+              if (vatEl) vatEl.value = '';
               document.getElementById('productModal').classList.add('open');
             }
 
-            const inventoryItems = (function(){
+            const inventoryItems = (function() {
               try {
                 return JSON.parse(atob('<?= base64_encode(json_encode($inventory, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>'));
               } catch (err) {
@@ -6342,11 +7026,11 @@ function factorial(int $n): int
             })();
 
             // Ensure the product form always sends the action name (button name) even when submitted programmatically
-            (function(){
+            (function() {
               try {
                 const prodForm = document.getElementById('prod_form');
                 if (!prodForm) return;
-                prodForm.addEventListener('submit', function(e){
+                prodForm.addEventListener('submit', function(e) {
                   try {
                     const btn = document.getElementById('prod_submit_btn');
                     if (btn && btn.name) {
@@ -6361,9 +7045,13 @@ function factorial(int $n): int
                         hidden.value = '1';
                       }
                     }
-                  } catch (ex) { console.error(ex); }
+                  } catch (ex) {
+                    console.error(ex);
+                  }
                 });
-              } catch (ex) { console.error(ex); }
+              } catch (ex) {
+                console.error(ex);
+              }
             })();
 
             function openEditModal(data, title = 'Edit Product') {
@@ -6386,12 +7074,15 @@ function factorial(int $n): int
               const vatEl = document.getElementById('form_vat');
               if (vatEl) {
                 const base = isNaN(p) ? 0 : p;
-                vatEl.value = (base * taxRate).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+                vatEl.value = (base * taxRate).toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                });
               }
               document.getElementById('form_qty').value = data.stock_qty;
               document.getElementById('form_cat').value = data.category_id || '';
               document.getElementById('form_disc').value = data.discount_id || '';
-              
+
               // Show current image if editing and image exists
               if (data.image_url && data.image_url !== '') {
                 const previewContainer = document.getElementById('image_preview_container');
@@ -6401,19 +7092,19 @@ function factorial(int $n): int
               } else {
                 document.getElementById('image_preview_container').style.display = 'none';
               }
-              
+
               // Reset file input
               document.getElementById('product_image_input').value = '';
-              
+
               document.getElementById('productModal').classList.add('open');
               document.getElementById('form_qty').focus();
             }
-            
+
             // Preview selected product image before upload
             function previewImage(input) {
               const previewContainer = document.getElementById('image_preview_container');
               const previewImg = document.getElementById('image_preview');
-              
+
               if (input.files && input.files[0]) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
@@ -6488,7 +7179,10 @@ function factorial(int $n): int
               const taxRate = parseFloat(<?= json_encode($store_info['tax_rate']) ?>);
               const vatEl = document.getElementById('form_vat');
               if (vatEl) {
-                vatEl.value = (num * taxRate).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+                vatEl.value = (num * taxRate).toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                });
               }
             }
 
@@ -6658,12 +7352,22 @@ function factorial(int $n): int
                   const body = new URLSearchParams();
                   body.append('action', 'delete_promotion_ajax');
                   body.append('discount_id', id);
-                  const resp = await fetch(window.location.pathname, { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() });
-                  if (!resp.ok) { toast('Failed to delete promotion', 'red'); return; }
+                  const resp = await fetch(window.location.pathname, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: body.toString()
+                  });
+                  if (!resp.ok) {
+                    toast('Failed to delete promotion', 'red');
+                    return;
+                  }
                   const j = await resp.json();
                   if (j && j.status === 'ok') {
                     // remove promo card from UI
-                    const card = btn.closest('.promo-card'); if (card) card.remove();
+                    const card = btn.closest('.promo-card');
+                    if (card) card.remove();
                     // remove option from promo_select
                     const sel = document.getElementById('promo_select');
                     if (sel) {
@@ -6868,7 +7572,7 @@ function factorial(int $n): int
             document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
               if (e.target === o) o.classList.remove('open');
             }));
-            
+
             // CRM row click handler to open Edit modal
             document.querySelectorAll('.crm-row-clickable').forEach(row => {
               row.addEventListener('click', function(e) {
@@ -7006,17 +7710,17 @@ function factorial(int $n): int
             ?>
               <div class="emp-card">
                 <div class="emp-avatar" style="cursor:pointer;" onclick='openEditEmp(<?= json_encode($emp) ?>)'>
-                    <?php if (!empty($emp['photo_url'])): ?>
-                      <img src="<?= htmlspecialchars($emp['photo_url'], ENT_QUOTES, 'UTF-8') ?>" alt=""
-                        style="width:100%; height:100%; object-fit:cover; border-radius:50%;">
-                    <?php else: ?>
-                      <?= $av ?>
-                    <?php endif; ?>
+                  <?php if (!empty($emp['photo_url'])): ?>
+                    <img src="<?= htmlspecialchars($emp['photo_url'], ENT_QUOTES, 'UTF-8') ?>" alt=""
+                      style="width:100%; height:100%; object-fit:cover; border-radius:50%;">
+                  <?php else: ?>
+                    <?= $av ?>
+                  <?php endif; ?>
+                </div>
+                <div style="flex:1;">
+                  <div style="font-size:15px; font-weight:600; color:var(--espresso); cursor:pointer;" onclick='openEditEmp(<?= json_encode($emp) ?>)'>
+                    <?= htmlspecialchars($emp['full_name'], ENT_QUOTES, 'UTF-8') ?>
                   </div>
-                  <div style="flex:1;">
-                    <div style="font-size:15px; font-weight:600; color:var(--espresso); cursor:pointer;" onclick='openEditEmp(<?= json_encode($emp) ?>)'>
-                      <?= htmlspecialchars($emp['full_name'], ENT_QUOTES, 'UTF-8') ?>
-                    </div>
                   <div style="font-size:12px; color:var(--text-3); margin-top:2px;">
                     <?= $emp['employee_id'] ?> &middot; <?= $emp['role'] ?>
                   </div>
@@ -7092,163 +7796,184 @@ function factorial(int $n): int
             document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
               if (e.target === o) o.classList.remove('open');
             }));
-            
-            // Random passcode helper functions used by the reset passcode modal
-              function rand(min, max) {
-                min = Math.floor(min);
-                max = Math.floor(max);
-                if (max <= min) return min;
-                return Math.floor(Math.random() * (max - min + 1)) + min;
-              }
 
-              // Generate a random passcode (numbers, letters, special symbols)
-              function suggestPasscode() {
-                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+[]{};:,.<>?';
-                const len = 12;
-                let pc = '';
-                for (let i = 0; i < len; i++) {
-                  pc += chars.charAt(rand(0, chars.length - 1));
-                }
-                const input = document.querySelector('#resetPassModal input[name="new_passcode"]');
-                if (input) {
-                  input.value = pc;
-                  // briefly show the generated passcode in plain text so admin can verify it
-                  const prevType = input.type;
-                  try {
-                    input.type = 'text';
-                    setTimeout(() => { input.type = prevType; }, 4000);
-                  } catch (e) {
-                    // ignore if browser restricts changing type
-                  }
+            // Random passcode helper functions used by the reset passcode modal
+            function rand(min, max) {
+              min = Math.floor(min);
+              max = Math.floor(max);
+              if (max <= min) return min;
+              return Math.floor(Math.random() * (max - min + 1)) + min;
+            }
+
+            // Generate a random passcode (numbers, letters, special symbols)
+            function suggestPasscode() {
+              const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+[]{};:,.<>?';
+              const len = 12;
+              let pc = '';
+              for (let i = 0; i < len; i++) {
+                pc += chars.charAt(rand(0, chars.length - 1));
+              }
+              const input = document.querySelector('#resetPassModal input[name="new_passcode"]');
+              if (input) {
+                input.value = pc;
+                // briefly show the generated passcode in plain text so admin can verify it
+                const prevType = input.type;
+                try {
+                  input.type = 'text';
+                  setTimeout(() => {
+                    input.type = prevType;
+                  }, 4000);
+                } catch (e) {
+                  // ignore if browser restricts changing type
                 }
               }
+            }
           </script>
 
-            <!-- Employee History Modal: shows session records for selected staff -->
-            <div class="overlay" id="employeeHistoryModal">
-              <div class="modal-box" style="max-width:760px; width:100%;">
-                <div class="modal-header">
-                  <span class="modal-title">Employee Session History</span>
-                  <button class="modal-close" onclick="document.getElementById('employeeHistoryModal').classList.remove('open')">&times;</button>
-                </div>
-                <div style="padding:12px 18px;">
-                  <div id="empHistoryHeader" style="margin-bottom:12px; font-weight:700; color:var(--espresso);"></div>
-                  <div class="tbl-wrap">
-                    <table style="width:100%;">
-                      <thead>
-                        <tr>
-                          <th>Date</th>
-                          <th>Login Time</th>
-                          <th>Logout Time</th>
-                          <th>Duration</th>
-                        </tr>
-                      </thead>
-                      <tbody id="empHistoryBody">
-                        <tr><td colspan="4" style="text-align:center; color:var(--text-3); padding:18px;">No history yet.</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
+          <!-- Employee History Modal: shows session records for selected staff -->
+          <div class="overlay" id="employeeHistoryModal">
+            <div class="modal-box" style="max-width:760px; width:100%;">
+              <div class="modal-header">
+                <span class="modal-title">Employee Session History</span>
+                <button class="modal-close" onclick="document.getElementById('employeeHistoryModal').classList.remove('open')">&times;</button>
+              </div>
+              <div style="padding:12px 18px;">
+                <div id="empHistoryHeader" style="margin-bottom:12px; font-weight:700; color:var(--espresso);"></div>
+                <div class="tbl-wrap">
+                  <table style="width:100%;">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Login Time</th>
+                        <th>Logout Time</th>
+                        <th>Duration</th>
+                      </tr>
+                    </thead>
+                    <tbody id="empHistoryBody">
+                      <tr>
+                        <td colspan="4" style="text-align:center; color:var(--text-3); padding:18px;">No history yet.</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
+          </div>
 
-            <script>
-              // Live timer state for active employee history records
-              let employeeHistoryTimer = null;
+          <script>
+            // Live timer state for active employee history records
+            let employeeHistoryTimer = null;
 
             // Fetch and render employee session history in the modal
             async function openEmployeeHistory(employeeId) {
-                if (!employeeId) return;
-                const modal = document.getElementById('employeeHistoryModal');
-                const hdr = document.getElementById('empHistoryHeader');
-                const body = document.getElementById('empHistoryBody');
-                hdr.textContent = 'Loading...';
-                body.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:18px;">Loading…</td></tr>';
-                modal.classList.add('open');
-                try {
-                  const resp = await fetch('record.php?action=get_history&employee_id=' + encodeURIComponent(employeeId), { credentials: 'same-origin' });
-                  if (!resp.ok) {
-                    let msg = 'HTTP ' + resp.status;
-                    try { const t = await resp.text(); const pj = JSON.parse(t); if (pj && pj.message) msg = pj.message; } catch(e) {}
-                    throw new Error(msg);
-                  }
-                  const j = await resp.json();
-                  if (!j || j.status !== 'ok') throw new Error(j && j.message ? j.message : 'Failed to fetch');
-                  const emp = j.employee || {};
-                  hdr.textContent = (emp.full_name || employeeId) + ' — ' + (emp.employee_id || '');
-                  const rows = j.sessions || [];
-                  if (!rows.length) {
-                    body.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-3); padding:18px;">No session records.</td></tr>';
-                    clearEmployeeHistoryTimer();
-                    return;
-                  }
-                  body.innerHTML = rows.map(r => {
-                    const loginDate = escapeHtml(r.login_date || '');
-                    const loginTimeText = escapeHtml(formatShortTime(r.login_time));
-                    const durationText = escapeHtml(r.duration || '00:00:00');
-                    let logoutCell = '';
-                    let durationCell = '';
-                    if (r.logout_time) {
-                      logoutCell = escapeHtml(formatShortTime(r.logout_time));
-                      durationCell = `<td class="session-duration-cell" data-active="0">${durationText}</td>`;
-                    } else {
-                      const loginTs = r.login_time ? Math.floor(new Date(r.login_time.replace(' ', 'T')).getTime() / 1000) : 0;
-                      const priorDuration = parseInt(r.duration_seconds || 0, 10) || 0;
-                      logoutCell = '<span style="color:var(--green); font-weight:600;">Active</span>';
-                      durationCell = `<td class="session-duration-cell" data-active="1" data-login-ts="${loginTs}" data-prior-duration="${priorDuration}"><span class="live-session-timer">${durationText}</span></td>`;
-                    }
-                    return `<tr><td>${loginDate}</td><td>${loginTimeText}</td><td>${logoutCell}</td>${durationCell}</tr>`;
-                  }).join('');
-                  updateEmployeeHistoryTimers();
-                } catch (err) {
-                  const msg = err && err.message ? String(err.message) : 'Unknown error';
-                  body.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--red); padding:18px;">${escapeHtml(msg)}</td></tr>`;
-                  hdr.textContent = 'Error: ' + msg;
-                  clearEmployeeHistoryTimer();
-                  console.error('History load error:', err);
+              if (!employeeId) return;
+              const modal = document.getElementById('employeeHistoryModal');
+              const hdr = document.getElementById('empHistoryHeader');
+              const body = document.getElementById('empHistoryBody');
+              hdr.textContent = 'Loading...';
+              body.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:18px;">Loading…</td></tr>';
+              modal.classList.add('open');
+              try {
+                const resp = await fetch('record.php?action=get_history&employee_id=' + encodeURIComponent(employeeId), {
+                  credentials: 'same-origin'
+                });
+                if (!resp.ok) {
+                  let msg = 'HTTP ' + resp.status;
+                  try {
+                    const t = await resp.text();
+                    const pj = JSON.parse(t);
+                    if (pj && pj.message) msg = pj.message;
+                  } catch (e) {}
+                  throw new Error(msg);
                 }
-              }
-
-              // Stop live timer updates when no active employee session rows remain
-              function clearEmployeeHistoryTimer() {
-                if (employeeHistoryTimer !== null) {
-                  clearInterval(employeeHistoryTimer);
-                  employeeHistoryTimer = null;
-                }
-              }
-
-              // Refresh active session timers once per second while modal is open
-              function updateEmployeeHistoryTimers() {
-                const activeCells = document.querySelectorAll('#employeeHistoryModal .session-duration-cell[data-active="1"]');
-                if (!activeCells.length) {
+                const j = await resp.json();
+                if (!j || j.status !== 'ok') throw new Error(j && j.message ? j.message : 'Failed to fetch');
+                const emp = j.employee || {};
+                hdr.textContent = (emp.full_name || employeeId) + ' — ' + (emp.employee_id || '');
+                const rows = j.sessions || [];
+                if (!rows.length) {
+                  body.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-3); padding:18px;">No session records.</td></tr>';
                   clearEmployeeHistoryTimer();
                   return;
                 }
-                activeCells.forEach(cell => {
-                  const loginTs = parseInt(cell.dataset.loginTs || '0', 10);
-                  const priorSeconds = parseInt(cell.dataset.priorDuration || '0', 10) || 0;
-                  if (!loginTs || loginTs <= 0) return;
-                  const elapsed = Math.max(0, Math.floor((Date.now() / 1000) - loginTs));
-                  const total = priorSeconds + elapsed;
-                  const hours = String(Math.floor(total / 3600)).padStart(2, '0');
-                  const mins = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
-                  const secs = String(total % 60).padStart(2, '0');
-                  const timerElem = cell.querySelector('.live-session-timer');
-                  if (timerElem) {
-                    timerElem.textContent = `${hours}:${mins}:${secs}`;
+                body.innerHTML = rows.map(r => {
+                  const loginDate = escapeHtml(r.login_date || '');
+                  const loginTimeText = escapeHtml(formatShortTime(r.login_time));
+                  const durationText = escapeHtml(r.duration || '00:00:00');
+                  let logoutCell = '';
+                  let durationCell = '';
+                  if (r.logout_time) {
+                    logoutCell = escapeHtml(formatShortTime(r.logout_time));
+                    durationCell = `<td class="session-duration-cell" data-active="0">${durationText}</td>`;
+                  } else {
+                    const loginTs = r.login_time ? Math.floor(new Date(r.login_time.replace(' ', 'T')).getTime() / 1000) : 0;
+                    const priorDuration = 0;
+                    logoutCell = '<span style="color:var(--green); font-weight:600;">Active</span>';
+                    durationCell = `<td class="session-duration-cell" data-active="1" data-login-ts="${loginTs}" data-prior-duration="${priorDuration}"><span class="live-session-timer">${durationText}</span></td>`;
                   }
-                });
-                if (employeeHistoryTimer === null) {
-                  employeeHistoryTimer = setInterval(updateEmployeeHistoryTimers, 1000);
-                }
+                  return `<tr><td>${loginDate}</td><td>${loginTimeText}</td><td>${logoutCell}</td>${durationCell}</tr>`;
+                }).join('');
+                updateEmployeeHistoryTimers();
+              } catch (err) {
+                const msg = err && err.message ? String(err.message) : 'Unknown error';
+                body.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--red); padding:18px;">${escapeHtml(msg)}</td></tr>`;
+                hdr.textContent = 'Error: ' + msg;
+                clearEmployeeHistoryTimer();
+                console.error('History load error:', err);
               }
+            }
 
-              function escapeHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-              function formatShortTime(ts) {
-                if (!ts) return '';
-                try { return new Date(ts.replace(' ', 'T')).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); } catch(e) { return ts; }
+            // Stop live timer updates when no active employee session rows remain
+            function clearEmployeeHistoryTimer() {
+              if (employeeHistoryTimer !== null) {
+                clearInterval(employeeHistoryTimer);
+                employeeHistoryTimer = null;
               }
-            </script>
+            }
+
+            // Refresh active session timers once per second while modal is open
+            function updateEmployeeHistoryTimers() {
+              const activeCells = document.querySelectorAll('#employeeHistoryModal .session-duration-cell[data-active="1"]');
+              if (!activeCells.length) {
+                clearEmployeeHistoryTimer();
+                return;
+              }
+              activeCells.forEach(cell => {
+                const loginTs = parseInt(cell.dataset.loginTs || '0', 10);
+                const priorSeconds = parseInt(cell.dataset.priorDuration || '0', 10) || 0;
+                if (!loginTs || loginTs <= 0) return;
+                const elapsed = Math.max(0, Math.floor((Date.now() / 1000) - loginTs));
+                const total = priorSeconds + elapsed;
+                const hours = String(Math.floor(total / 3600)).padStart(2, '0');
+                const mins = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+                const secs = String(total % 60).padStart(2, '0');
+                const timerElem = cell.querySelector('.live-session-timer');
+                if (timerElem) {
+                  timerElem.textContent = `${hours}:${mins}:${secs}`;
+                }
+              });
+              if (employeeHistoryTimer === null) {
+                employeeHistoryTimer = setInterval(updateEmployeeHistoryTimers, 1000);
+              }
+            }
+
+            function escapeHtml(s) {
+              return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
+            function formatShortTime(ts) {
+              if (!ts) return '';
+              try {
+                const str = ts.includes('-') ? ts.replace(' ', 'T') : '1970-01-01T' + ts;
+                return new Date(str).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+              } catch (e) {
+                return ts;
+              }
+            }
+          </script>
 
         <?php
         // ── REPORTS ───────────────────────────────────────────────────
@@ -7367,31 +8092,31 @@ function factorial(int $n): int
                     </tr>
                   </thead>
                   <tbody>
-                  <?php $r_sales_rows = $r_sales ? $r_sales->fetch_all(MYSQLI_ASSOC) : [];
-if (!empty($r_sales_rows)):
-  foreach ($r_sales_rows as $s):
-    $sku_esc = $conn->real_escape_string($s['order_id']);
-    // Fetch sale items with product names for details view
-    $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.order_id='$sku_esc'");
-    $items_array = [];
-    if ($items_res) {
-      while ($it = $items_res->fetch_assoc()) {
-        $items_array[] = $it;
-      }
-    }
-    // ── Order ID = same value the Checkout page shows: #1000 + nth completed sale of that day
-    $sale_day_esc  = $conn->real_escape_string(date('Y-m-d', strtotime($s['sale_date'])));
-    $sale_date_esc = $conn->real_escape_string($s['sale_date']);
-    $txn_esc       = $conn->real_escape_string($s['order_id']);
-    $pos_row = $conn->query("SELECT COUNT(*) as n FROM sales WHERE DATE(sale_date)='$sale_day_esc' AND status='Completed' AND (sale_date < '$sale_date_esc' OR (sale_date = '$sale_date_esc' AND order_id <= '$txn_esc'))")->fetch_assoc();
-    $order_id_display = '#' . (1000 + (int)($pos_row ? $pos_row['n'] : 1));
-    // Prepare details payload including conditional wallet fields (if present in DB)
-    $details = $s;
-    $details['items'] = $items_array;
-    ?>
-    <tr>
-      <td><span style="font-family:monospace; font-size:12px; color:var(--chestnut); font-weight:600;"><?= htmlspecialchars($order_id_display, ENT_QUOTES, 'UTF-8') ?></span></td>
- <td style="color:var(--text-3); font-size:12px;"><?= date('d M Y, h:i A', strtotime($s['sale_date'])) ?></td>
+                    <?php $r_sales_rows = $r_sales ? $r_sales->fetch_all(MYSQLI_ASSOC) : [];
+                    if (!empty($r_sales_rows)):
+                      foreach ($r_sales_rows as $s):
+                        $sku_esc = $conn->real_escape_string($s['order_id']);
+                        // Fetch sale items with product names for details view
+                        $items_res = $conn->query("SELECT si.sku, si.quantity, si.price_at_time, si.subtotal, COALESCE(i.product_name, '') as product_name FROM sale_items si LEFT JOIN inventory i ON si.sku=i.sku WHERE si.order_id='$sku_esc'");
+                        $items_array = [];
+                        if ($items_res) {
+                          while ($it = $items_res->fetch_assoc()) {
+                            $items_array[] = $it;
+                          }
+                        }
+                        // ── Order ID = same value the Checkout page shows: #1000 + nth completed sale of that day
+                        $sale_day_esc  = $conn->real_escape_string(date('Y-m-d', strtotime($s['sale_date'])));
+                        $sale_date_esc = $conn->real_escape_string($s['sale_date']);
+                        $txn_esc       = $conn->real_escape_string($s['order_id']);
+                        $pos_row = $conn->query("SELECT COUNT(*) as n FROM sales WHERE DATE(sale_date)='$sale_day_esc' AND status='Completed' AND (sale_date < '$sale_date_esc' OR (sale_date = '$sale_date_esc' AND order_id <= '$txn_esc'))")->fetch_assoc();
+                        $order_id_display = '#' . (1000 + (int)($pos_row ? $pos_row['n'] : 1));
+                        // Prepare details payload including conditional wallet fields (if present in DB)
+                        $details = $s;
+                        $details['items'] = $items_array;
+                    ?>
+                        <tr>
+                          <td><span style="font-family:monospace; font-size:12px; color:var(--chestnut); font-weight:600;"><?= htmlspecialchars($order_id_display, ENT_QUOTES, 'UTF-8') ?></span></td>
+                          <td style="color:var(--text-3); font-size:12px;"><?= date('d M Y, h:i A', strtotime($s['sale_date'])) ?></td>
                           <td style="font-weight:500;"><?= htmlspecialchars($s['cashier'] ?? '&#8212;', ENT_QUOTES, 'UTF-8') ?></td>
                           <td><span class="badge badge-gray"><?= htmlspecialchars($s['payment_method'], ENT_QUOTES, 'UTF-8') ?></span></td>
                           <td style="font-weight:700; color:var(--espresso);">&#8369;<?= number_format($s['total_amount'], 2) ?></td>
@@ -7439,8 +8164,8 @@ if (!empty($r_sales_rows)):
             <div class="receipt-row"><span id="td_wallet_contact_label">Contact Number</span><span id="td_wallet_contact">&#8212;</span></div>
             <div class="receipt-row"><span>Account Name</span><span id="td_wallet_account">&#8212;</span></div>
             <div style="margin-top:8px;"><a id="td_proof_link" href="#" target="_blank" style="display: inline-block; margin-top: 10px;">
-            <img id="td_proof_img" src="" alt="Proof of Payment" style="display: none; max-width: 220px; max-height: 350px; width: auto; height: auto; object-fit: contain; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
-          </a></div>
+                <img id="td_proof_img" src="" alt="Proof of Payment" style="display: none; max-width: 220px; max-height: 350px; width: auto; height: auto; object-fit: contain; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
+              </a></div>
           </div>
         </div>
       </div>
@@ -7495,7 +8220,7 @@ if (!empty($r_sales_rows)):
             else if (method === 'maya') labelEl.textContent = 'Reference ID';
             else labelEl.textContent = 'Contact Number';
           }
-          document.getElementById('td_wallet_contact').textContent = d.wallet_contact_number || d.wallet_reference_number || d.wallet_contact || '—';
+          document.getElementById('td_wallet_contact').textContent = d.wallet_reference_number || d.wallet_contact || '—';
           document.getElementById('td_wallet_account').textContent = d.wallet_account_name || d.wallet_account || '—';
           const proof = d.wallet_proof_image_url || d.wallet_proof_url || '';
           const img = document.getElementById('td_proof_img');
@@ -7550,4 +8275,3 @@ if (!empty($r_sales_rows)):
 </body>
 
 </html>
-
