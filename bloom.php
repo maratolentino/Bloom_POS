@@ -1198,7 +1198,7 @@ if ($page === "crm") {
       }
       $cid = $conn->insert_id;
       if ($cid) {
-        $conn->query("INSERT INTO customer_approval_history (customer_id,action,employee_id,note) VALUES ($cid,'created_and_approved','$creator','Created by admin and auto-approved')");
+        $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($cid,'created_and_approved','$creator','Created by admin and auto-approved')");
       }
     } 
 
@@ -6310,6 +6310,22 @@ function factorial(int $n): int
                 .catch(() => {
                   if (skuEl) skuEl.value = 'PR-001';
                 });
+
+              // default product category to the currently active inventory category pill
+              const selectedCatPill = document.querySelector('#inv-cat-filter .cat-pill.active');
+              const formCat = document.getElementById('form_cat');
+              if (formCat) {
+                formCat.value = '';
+                if (selectedCatPill) {
+                  const selectedCategory = (selectedCatPill.dataset.cat || '').trim().toLowerCase();
+                  if (selectedCategory) {
+                    const matchingOption = Array.from(formCat.options).find(opt => String(opt.text || '').trim().toLowerCase() === selectedCategory);
+                    if (matchingOption) {
+                      formCat.value = matchingOption.value;
+                    }
+                  }
+                }
+              }
 
               // clear VAT display
               const vatEl = document.getElementById('form_vat'); if (vatEl) vatEl.value = '';

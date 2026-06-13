@@ -34,8 +34,9 @@ if (!isset($_SESSION['__bloom_initialized'])) {
     if (isset($_SESSION['cart'])) unset($_SESSION['cart']);
 }
 
-// ── Inactivity timeout check (10 seconds)
-$INACTIVITY_TIMEOUT = 60; // seconds
+// ── Inactivity timeout check
+// EDIT THIS VALUE HERE to adjust auto-logout time (in seconds)
+$INACTIVITY_TIMEOUT = 600; // seconds (10 minutes)
 if (isset($_SESSION['user_id']) && $_SESSION['user_id'] !== '') {
     $current_time = time();
     
