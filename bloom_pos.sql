@@ -69,7 +69,7 @@ CREATE TABLE `customer_approval_history` (
   `approval_id` int(11) NOT NULL,
   `customer_id` int(11) NOT NULL,
   `action` varchar(32) NOT NULL,
-  `by_employee_id` varchar(50) DEFAULT NULL,
+  `employee_id` varchar(50) DEFAULT NULL,
   `note` varchar(255) DEFAULT NULL,
   `ts` datetime NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -139,7 +139,7 @@ CREATE TABLE `sales` (
   `discount_id` int(11) DEFAULT NULL,
   `payment_method` varchar(50) DEFAULT NULL,
   `amount_tendered` decimal(10,2) DEFAULT NULL,
-  `wallet_contact_number` varchar(50) DEFAULT NULL,
+  `wallet_reference_number` varchar(50) DEFAULT NULL,
   `wallet_account_name` varchar(150) DEFAULT NULL,
   `wallet_proof_image_url` varchar(255) DEFAULT NULL,
   `status` varchar(30) NOT NULL DEFAULT 'Completed',
@@ -176,7 +176,6 @@ CREATE TABLE `session_history` (
   `login_date` date NOT NULL,
   `login_time` time NOT NULL DEFAULT current_timestamp(),
   `logout_time` datetime DEFAULT NULL,
-  `duration_seconds` int(11) DEFAULT NULL,
   `duration` varchar(16) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -234,7 +233,7 @@ ALTER TABLE `customers`
 ALTER TABLE `customer_approval_history`
   ADD PRIMARY KEY (`approval_id`),
   ADD KEY `fk_cah_cust` (`customer_id`),
-  ADD KEY `fk_cah_emp` (`by_employee_id`);
+  ADD KEY `fk_cah_emp` (`employee_id`);
 
 --
 -- Indexes for table `discounts`
@@ -358,7 +357,7 @@ ALTER TABLE `showcase_sales`
 --
 ALTER TABLE `customer_approval_history`
   ADD CONSTRAINT `fk_cah_cust` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`customer_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_cah_emp` FOREIGN KEY (`by_employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL ON UPDATE CASCADE;
+  ADD CONSTRAINT `fk_cah_emp` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
 -- Constraints for table `inventory`
