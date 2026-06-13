@@ -108,7 +108,7 @@ CREATE TABLE `employees` (
 --
 
 INSERT INTO `employees` (`employee_id`, `full_name`, `role`, `passcode`, `photo_url`, `created_at`, `created_by`) VALUES
-('EMP-001', 'Aila Mojares', 'Admin', '1234', NULL, '2026-06-13 16:59:34', 'System');
+('EMP-001', 'Aila Quimio', 'Admin', '1234', NULL, '2026-06-13 16:59:34', 'System');
 
 -- --------------------------------------------------------
 
