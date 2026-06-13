@@ -87,6 +87,14 @@ CREATE TABLE `discounts` (
   `expiry_date` date DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+INSERT INTO `discounts` (discount_name, discount_type, discount_value, status, expiry_date)
+VALUES
+  ("Mother's Day Sale",       'percent', 15.00, 1, '2026-06-20'),
+  ("All Saint's Day",          'percent', 20.00, 1, '2026-11-01'),
+  ("Flash Weekend Deal",       'percent', 10.00, 0, '2026-06-15'),
+  ("Valentine's Day",          'percent', 25.00, 0, '2027-02-14'),
+  ("All Souls Day",            'percent', 30.00, 1, '2026-11-02');
+
 -- --------------------------------------------------------
 
 --
