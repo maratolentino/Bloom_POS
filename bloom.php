@@ -409,7 +409,7 @@ if ($colCheckRej && $colCheckRej->num_rows > 0) {
 // Ensure approval history table exists
 $historyCheck = $conn->query("SHOW TABLES LIKE 'customer_approval_history'");
 if ($historyCheck && $historyCheck->num_rows === 0) {
-  $conn->query("CREATE TABLE customer_approval_history (approval_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, customer_id INT NOT NULL, action VARCHAR(32) NOT NULL, by_employee_id VARCHAR(50) NULL, note VARCHAR(255) NULL, ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  $conn->query("CREATE TABLE customer_approval_history (approval_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, customer_id INT NOT NULL, action VARCHAR(32) NOT NULL, employee_id VARCHAR(50) NULL, note VARCHAR(255) NULL, ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
 // Ensure discount tracking columns exist in sales table
@@ -685,7 +685,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
 
   // Detect whether wallet columns exist in sales table to avoid SQL errors
   $hasWalletCols = false;
-  $colCheck = $conn->query("SHOW COLUMNS FROM sales LIKE 'wallet_contact_number'");
+  $colCheck = $conn->query("SHOW COLUMNS FROM sales LIKE 'wallet_reference_number'");
   if ($colCheck && $colCheck->num_rows > 0) {
     $hasWalletCols = true;
   }
@@ -700,7 +700,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
   $conn->begin_transaction();
   try {
     if ($hasWalletCols) {
-      $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,discount_id,discount_name,discount_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+      $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_reference_number,wallet_account_name,wallet_proof_image_url,discount_id,discount_name,discount_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
       if ($stmt) {
         $stmt->bind_param("ssdddsdsssisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $discount_id, $discount_name, $discount_type, $employee_id, $customer_id);
       }
@@ -1198,7 +1198,7 @@ if ($page === "crm") {
       }
       $cid = $conn->insert_id;
       if ($cid) {
-        $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($cid,'created_and_approved','$creator','Created by admin and auto-approved')");
+        $conn->query("INSERT INTO customer_approval_history (customer_id,action,employee_id,note) VALUES ($cid,'created_and_approved','$creator','Created by admin and auto-approved')");
       }
     } 
 
@@ -1222,7 +1222,7 @@ if ($page === "crm") {
       }
       $cid = $conn->insert_id;
       if ($cid) {
-        $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($cid,'created_pending','$creator','Created by cashier, pending admin approval')");
+        $conn->query("INSERT INTO customer_approval_history (customer_id,action,employee_id,note) VALUES ($cid,'created_pending','$creator','Created by cashier, pending admin approval')");
       }
     }
     header("Location: ?page=crm");
@@ -1306,7 +1306,7 @@ if ($page === "crm") {
     $admin = $conn->real_escape_string($_SESSION['user_id']);
     $now = date('Y-m-d H:i:s');
     $conn->query("UPDATE customers SET approved=1, approved_by='$admin', approved_at='$now' WHERE customer_id=$id");
-    $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($id,'approved','$admin','Approved by admin')");
+    $conn->query("INSERT INTO customer_approval_history (customer_id,action,employee_id,note) VALUES ($id,'approved','$admin','Approved by admin')");
     header("Location: ?page=crm");
     exit;
   }
@@ -1317,7 +1317,7 @@ if ($page === "crm") {
     $admin = $conn->real_escape_string($_SESSION['user_id']);
     $now = date('Y-m-d H:i:s');
     $conn->query("UPDATE customers SET approved=2, approved_by='$admin', approved_at='$now' WHERE customer_id=$id");
-    $conn->query("INSERT INTO customer_approval_history (customer_id,action,by_employee_id,note) VALUES ($id,'rejected','$admin','Rejected by admin')");
+    $conn->query("INSERT INTO customer_approval_history (customer_id,action,employee_id,note) VALUES ($id,'rejected','$admin','Rejected by admin')");
     header("Location: ?page=crm");
     exit;
   }
@@ -7479,7 +7479,7 @@ if (!empty($r_sales_rows)):
             else if (method === 'maya') labelEl.textContent = 'Reference ID';
             else labelEl.textContent = 'Contact Number';
           }
-          document.getElementById('td_wallet_contact').textContent = d.wallet_contact_number || d.wallet_contact || d.wallet_contact_number || '—';
+          document.getElementById('td_wallet_contact').textContent = d.wallet_reference_number || d.wallet_contact || d.wallet_reference_number || '—';
           document.getElementById('td_wallet_account').textContent = d.wallet_account_name || d.wallet_account || '—';
           const proof = d.wallet_proof_image_url || d.wallet_proof_url || '';
           const img = document.getElementById('td_proof_img');
