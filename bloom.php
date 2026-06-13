@@ -685,7 +685,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
 
   // Detect whether wallet columns exist in sales table to avoid SQL errors
   $hasWalletCols = false;
-  $colCheck = $conn->query("SHOW COLUMNS FROM sales LIKE 'wallet_reference_number'");
+  $colCheck = $conn->query("SHOW COLUMNS FROM sales LIKE 'wallet_contact_number'");
   if ($colCheck && $colCheck->num_rows > 0) {
     $hasWalletCols = true;
   }
@@ -700,7 +700,7 @@ if ($page === "checkout" && isset($_POST["finalize_sale"])) {
   $conn->begin_transaction();
   try {
     if ($hasWalletCols) {
-      $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_reference_number,wallet_account_name,wallet_proof_image_url,discount_id,discount_name,discount_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
+      $stmt = $conn->prepare("INSERT INTO sales (order_id,sale_date,total_amount,tax_amount,discount_amount,payment_method,amount_tendered,wallet_contact_number,wallet_account_name,wallet_proof_image_url,discount_id,discount_name,discount_type,status,employee_id,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Completed',?,?)");
       if ($stmt) {
         $stmt->bind_param("ssdddsdsssisssi", $order_id, $sale_date, $total_amount, $tax_amount, $discount_amount, $payment_method, $amount_tendered, $wallet_contact, $wallet_account, $wallet_proof_url, $discount_id, $discount_name, $discount_type, $employee_id, $customer_id);
       }
@@ -7479,7 +7479,7 @@ if (!empty($r_sales_rows)):
             else if (method === 'maya') labelEl.textContent = 'Reference ID';
             else labelEl.textContent = 'Contact Number';
           }
-          document.getElementById('td_wallet_contact').textContent = d.wallet_reference_number || d.wallet_contact || d.wallet_reference_number || '—';
+          document.getElementById('td_wallet_contact').textContent = d.wallet_contact_number || d.wallet_reference_number || d.wallet_contact || '—';
           document.getElementById('td_wallet_account').textContent = d.wallet_account_name || d.wallet_account || '—';
           const proof = d.wallet_proof_image_url || d.wallet_proof_url || '';
           const img = document.getElementById('td_proof_img');
