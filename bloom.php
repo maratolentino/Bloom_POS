@@ -3648,7 +3648,8 @@ function factorial(int $n): int
         </div>
       </div>
     </div>
-
+ 
+    <!--comment-->
 
     <!-- Employee registration page, accessible only to admins, with form validation and error handling -->
   <?php elseif ($page === 'register'): ?>
