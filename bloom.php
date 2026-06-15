@@ -2513,51 +2513,131 @@ function factorial(int $n): int
       align-items: center;
       justify-content: center;
       background: radial-gradient(ellipse at 30% 40%, #f0e6db 0%, var(--oatmeal) 60%);
+      padding: 24px;
     }
 
     .auth-box {
+      display: grid;
+      grid-template-columns: minmax(280px, 1.1fr) minmax(320px, 1fr);
+      width: min(940px, 100%);
       background: var(--white);
       border: 1px solid var(--taupe-l);
       border-radius: var(--radius-xl);
-      padding: 48px 42px;
-      width: 420px;
+      overflow: hidden;
       box-shadow: var(--shadow-xl);
+      min-height: 520px;
+    }
+
+    .auth-hero {
+      position: relative;
+      background: url('static/images/login/login_shop.jpg') center/cover no-repeat;
+      min-height: 520px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-start;
+    }
+
+    .auth-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.32));
+    }
+
+    .auth-hero-overlay {
+      position: relative;
+      z-index: 1;
+      padding: 36px;
+      width: 100%;
+      color: var(--white);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 18px;
+      background: linear-gradient(180deg, rgba(124,90,68,0.08), rgba(124,90,68,0.55));
+    }
+
+    .auth-hero-title {
+      font-size: clamp(26px, 4vw, 34px);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.5px;
+      max-width: 320px;
+    }
+
+    .auth-hero-copy {
+      font-size: 14px;
+      line-height: 1.75;
+      max-width: 340px;
+      color: rgba(255,255,255,0.92);
+    }
+
+    .auth-panel {
+      padding: 48px 42px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 16px;
     }
 
     .auth-logo {
-      font-size: 26px;
-      font-weight: 800;
+      font-size: 30px;
+      font-weight: 900;
       color: var(--chestnut);
-      text-align: center;
+      letter-spacing: -0.5px;
       margin-bottom: 6px;
-      letter-spacing: -.4px;
+      text-align: left;
     }
 
     .auth-sub {
       font-size: 14px;
       color: var(--text-3);
-      text-align: center;
-      margin-bottom: 32px;
+      text-align: left;
+      margin-bottom: 28px;
     }
 
-    .auth-err {
-      background: var(--red-l);
-      color: var(--red);
-      border-radius: var(--radius);
-      padding: 12px 16px;
-      font-size: 14px;
-      margin-bottom: 18px;
-      border: 1px solid #E0B0B0;
+    .auth-panel form {
+      display: grid;
+      gap: 18px;
     }
 
-    .auth-ok {
-      background: var(--green-l);
-      color: var(--green);
-      border-radius: var(--radius);
-      padding: 12px 16px;
-      font-size: 14px;
-      margin-bottom: 18px;
-      border: 1px solid #B0D9C2;
+    .auth-panel label.remember-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-2);
+      margin-bottom: 0;
+      cursor: pointer;
+    }
+
+    .auth-panel input[type=checkbox] {
+      accent-color: var(--chestnut);
+      width: 16px;
+      height: 16px;
+    }
+
+    .auth-panel .btn-full {
+      margin-top: 4px;
+    }
+
+    @media (max-width: 860px) {
+      .auth-box {
+        grid-template-columns: 1fr;
+        min-height: auto;
+      }
+
+      .auth-hero {
+        min-height: 260px;
+      }
+
+      .auth-panel {
+        padding: 32px 28px 36px;
+      }
+
+      .auth-hero-overlay {
+        padding: 22px;
+      }
     }
 
     /* ── Checkout layout ── */
@@ -3522,13 +3602,22 @@ function factorial(int $n): int
   </style>
 </head>
 
-<body>
+<body> <!-- Login Settings and Form -->
   <?php if ($page === 'login'): ?>
     <div class="auth-wrap">
       <div class="auth-box">
-        <div class="auth-logo">Bloom POS</div>
-        <div class="auth-sub">Flower Shop Point of Sale</div>
-        <?php if ($auth_error !== ''): ?><div class="auth-err"><?= htmlspecialchars($auth_error, ENT_QUOTES, 'UTF-8') ?></div>
+        <div class="auth-hero">
+          <div class="auth-hero-overlay">
+            <div class="auth-hero-title">Welcome!</div>
+            <div class="auth-hero-copy">Secure employee access to point of sale, inventory, and customer management in one polished floral experience.</div>
+          </div>
+        </div>
+        <div class="auth-panel">
+          <div>
+            <div class="auth-logo">Bloom POS</div>
+            <div class="auth-sub">Flower Shop Point of Sale</div>
+          </div>
+          <?php if ($auth_error !== ''): ?><div class="auth-err"><?= htmlspecialchars($auth_error, ENT_QUOTES, 'UTF-8') ?></div>
 
           <!-- Script for auto-resetting the login form and focusing the employee ID field if there's an authentication error -->
           <script>
@@ -3548,18 +3637,15 @@ function factorial(int $n): int
           </script>
 
           <!-- Display a success message if the user has just registered an account -->
-        <?php endif; ?>
-        <?php if (isset($_GET['registered'])): ?><div class="auth-ok">Account created. You may now log in.</div><?php endif; ?>
-        <form method="POST" action="?page=login">
-          <div class="form-group"><label>Employee ID</label><input type="text" name="emp_id" value="<?= htmlspecialchars($remembered_id, ENT_QUOTES, 'UTF-8') ?>" placeholder="EMP-001" required autofocus></div>
-          <div class="form-group"><label>Passcode</label><input type="password" name="passcode" placeholder="Enter passcode" required></div>
-          <label style="display:flex; align-items:center; gap:8px; font-size:13px;
-              color:var(--text-2); margin-bottom:16px; cursor:pointer;">
-            <input type="checkbox" name="remember_me" <?= $remembered_id ? 'checked' : '' ?>>
-            Remember my Employee ID for 30 days
-          </label>
-          <button type="submit" class="btn btn-primary btn-full btn-lg" style="margin-top:8px;">Sign In</button>
-        </form>
+          <?php endif; ?>
+          <?php if (isset($_GET['registered'])): ?><div class="auth-ok">Account created. You may now log in.</div><?php endif; ?>
+          <form method="POST" action="?page=login">
+            <div class="form-group"><label for="emp_id">Employee ID</label><input id="emp_id" type="text" name="emp_id" value="<?= htmlspecialchars($remembered_id, ENT_QUOTES, 'UTF-8') ?>" placeholder="EMP-001" required autofocus></div>
+            <div class="form-group"><label for="passcode">Passcode</label><input id="passcode" type="password" name="passcode" placeholder="Enter passcode" required></div>
+            <label class="remember-label"><input type="checkbox" name="remember_me" <?= $remembered_id ? 'checked' : '' ?>>Remember my Employee ID for 30 days</label>
+            <button type="submit" class="btn btn-primary btn-full btn-lg">Sign In</button>
+          </form>
+        </div>
       </div>
     </div>
 
