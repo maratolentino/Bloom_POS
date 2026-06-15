@@ -4162,13 +4162,16 @@ function factorial(int $n): int
         if (desc) desc.textContent = bundle.description;
         if (image) {
           if (bundle.imageUrl) {
-            image.style.backgroundImage = 'url(' + bundle.imageUrl + ')';
+            const safeUrl = bundle.imageUrl.replace(/"/g, '\\"');
+            image.style.backgroundImage = 'url("' + safeUrl + '")';
             image.style.backgroundSize = 'cover';
             image.style.backgroundPosition = 'center';
+            image.style.backgroundRepeat = 'no-repeat';
             image.textContent = '';
           } else {
             image.style.backgroundImage = 'none';
-            image.textContent = '';
+            image.style.backgroundRepeat = '';
+            image.textContent = 'Preview';
           }
         }
         if (action) {
@@ -4221,9 +4224,11 @@ function factorial(int $n): int
         const image = document.createElement('div');
         image.className = 'showcase-image';
         if (bundle.imageUrl) {
-          image.style.backgroundImage = 'url("' + bundle.imageUrl + '")';
+          const safeUrl = bundle.imageUrl.replace(/"/g, '\\"');
+          image.style.backgroundImage = 'url("' + safeUrl + '")';
           image.style.backgroundSize = 'cover';
           image.style.backgroundPosition = 'center';
+          image.style.backgroundRepeat = 'no-repeat';
           const inner = document.createElement('div');
           inner.className = 'showcase-image-inner';
           inner.style.background = 'rgba(0,0,0,0.28)';
