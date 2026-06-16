@@ -412,6 +412,11 @@ if ($colCheckRej && $colCheckRej->num_rows > 0) {
 $historyCheck = $conn->query("SHOW TABLES LIKE 'customer_approval_history'");
 if ($historyCheck && $historyCheck->num_rows === 0) {
   $conn->query("CREATE TABLE customer_approval_history (approval_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, customer_id INT NOT NULL, action VARCHAR(32) NOT NULL, employee_id VARCHAR(50) NULL, note VARCHAR(255) NULL, ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} else {
+  $colCheckHistoryEmp = $conn->query("SHOW COLUMNS FROM customer_approval_history LIKE 'employee_id'");
+  if ($colCheckHistoryEmp && $colCheckHistoryEmp->num_rows === 0) {
+    $conn->query("ALTER TABLE customer_approval_history ADD COLUMN employee_id VARCHAR(50) NULL AFTER action");
+  }
 }
 
 // Ensure discount tracking columns exist in sales table
@@ -2528,6 +2533,26 @@ function factorial(int $n): int
       min-height: 520px;
     }
 
+    .auth-wrap.auth-register .auth-box {
+      grid-template-columns: 1fr;
+      width: min(420px, 100%);
+      padding: 32px;
+      gap: 18px;
+      box-sizing: border-box;
+    }
+
+    .auth-wrap.auth-register .auth-box form {
+      display: grid;
+      gap: 16px;
+    }
+
+    .auth-wrap.auth-register .auth-box .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      align-items: end;
+    }
+
     .auth-hero {
       position: relative;
       background: url('static/images/login/login_shop.jpg') center/cover no-repeat;
@@ -3653,7 +3678,7 @@ function factorial(int $n): int
 
     <!-- Employee registration page, accessible only to admins, with form validation and error handling -->
   <?php elseif ($page === 'register'): ?>
-    <div class="auth-wrap">
+    <div class="auth-wrap auth-register">
       <div class="auth-box" style="width:420px;">
         <div class="auth-logo">Bloom POS</div>
         <div class="auth-sub">Register Staff Account</div>
@@ -7519,8 +7544,38 @@ function factorial(int $n): int
             <div class="card">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                 <div style="font-size:13px; color:var(--text-2);">Customer records</div>
-                <div><input type="text" id="cust_search" placeholder="Search customers..." style="padding:8px 10px; border:1px solid var(--taupe); border-radius:8px; font-size:13px;"></div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input type="text" id="cust_search" placeholder="Search customers..." style="padding:8px 10px; border:1px solid var(--taupe); border-radius:8px; font-size:13px; min-width:220px;">
+                </div>
               </div>
+              <script>
+                (function() {
+                  function filterCustomers() {
+                    var inp = document.getElementById('cust_search');
+                    if (!inp) return;
+                    var q = inp.value.trim().toLowerCase();
+                    document.querySelectorAll('table tbody tr[data-cust-id]').forEach(function(row) {
+                      if (!q) {
+                        row.style.display = '';
+                        return;
+                      }
+                      var txt = row.innerText.toLowerCase();
+                      row.style.display = txt.indexOf(q) !== -1 ? '' : 'none';
+                    });
+                  }
+
+                  var inp = document.getElementById('cust_search');
+                  if (inp) {
+                    inp.addEventListener('input', filterCustomers);
+                    inp.addEventListener('keydown', function(e) {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        filterCustomers();
+                      }
+                    });
+                  }
+                })();
+              </script>
               <div class="tbl-wrap">
                 <table>
                   <thead>
