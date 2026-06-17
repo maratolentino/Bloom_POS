@@ -1401,10 +1401,18 @@ if ($page === "employees" && $_SESSION["user_role"] === "Admin") {
     exit;
   }
 
-  // Deleting an employee will also delete their user account and invalidate their session if they are currently logged in
+  // Deleting an employee will also delete their user account and invalidate their session if they are currently logged in.
+  // Employees with an active (still logged in) session cannot be deleted because session_history.employee_id is a
+  // foreign key without ON DELETE CASCADE, so we check for that first instead of letting the query fail.
   if (isset($_POST["delete_employee"])) {
     $id = $conn->real_escape_string(isset($_POST["employee_id"]) ? $_POST["employee_id"] : "");
-    $conn->query("DELETE FROM employees WHERE employee_id='$id'");
+    $activeSessionCheck = $conn->query("SELECT COUNT(*) AS c FROM session_history WHERE employee_id='$id'");
+    $hasActiveSession = $activeSessionCheck && (int)$activeSessionCheck->fetch_assoc()["c"] > 0;
+    if ($hasActiveSession) {
+      $_SESSION["emp_delete_blocked_id"] = $id;
+    } else {
+      $conn->query("DELETE FROM employees WHERE employee_id='$id'");
+    }
     header("Location: ?page=employees");
     exit;
   }
@@ -2566,7 +2574,7 @@ function factorial(int $n): int
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.32));
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.32));
     }
 
     .auth-hero-overlay {
@@ -2579,7 +2587,7 @@ function factorial(int $n): int
       flex-direction: column;
       justify-content: flex-end;
       gap: 18px;
-      background: linear-gradient(180deg, rgba(124,90,68,0.08), rgba(124,90,68,0.55));
+      background: linear-gradient(180deg, rgba(124, 90, 68, 0.08), rgba(124, 90, 68, 0.55));
     }
 
     .auth-hero-title {
@@ -2594,7 +2602,7 @@ function factorial(int $n): int
       font-size: 14px;
       line-height: 1.75;
       max-width: 340px;
-      color: rgba(255,255,255,0.92);
+      color: rgba(255, 255, 255, 0.92);
     }
 
     .auth-panel {
@@ -3644,24 +3652,24 @@ function factorial(int $n): int
           </div>
           <?php if ($auth_error !== ''): ?><div class="auth-err"><?= htmlspecialchars($auth_error, ENT_QUOTES, 'UTF-8') ?></div>
 
-          <!-- Script for auto-resetting the login form and focusing the employee ID field if there's an authentication error -->
-          <script>
-            document.addEventListener('DOMContentLoaded', function() {
-              var err = <?= json_encode($auth_error) ?>;
-              if (err && err !== '') {
-                var f = document.querySelector('form[action="?page=login"]');
-                if (f) {
-                  try {
-                    f.reset();
-                    var el = f.querySelector('[name=emp_id]');
-                    if (el) el.focus();
-                  } catch (e) {}
+            <!-- Script for auto-resetting the login form and focusing the employee ID field if there's an authentication error -->
+            <script>
+              document.addEventListener('DOMContentLoaded', function() {
+                var err = <?= json_encode($auth_error) ?>;
+                if (err && err !== '') {
+                  var f = document.querySelector('form[action="?page=login"]');
+                  if (f) {
+                    try {
+                      f.reset();
+                      var el = f.querySelector('[name=emp_id]');
+                      if (el) el.focus();
+                    } catch (e) {}
+                  }
                 }
-              }
-            });
-          </script>
+              });
+            </script>
 
-          <!-- Display a success message if the user has just registered an account -->
+            <!-- Display a success message if the user has just registered an account -->
           <?php endif; ?>
           <?php if (isset($_GET['registered'])): ?><div class="auth-ok">Account created. You may now log in.</div><?php endif; ?>
           <form method="POST" action="?page=login">
@@ -3673,7 +3681,7 @@ function factorial(int $n): int
         </div>
       </div>
     </div>
- 
+
     <!--comment-->
 
     <!-- Employee registration page, accessible only to admins, with form validation and error handling -->
@@ -7839,7 +7847,12 @@ function factorial(int $n): int
 
         <?php
         // ── EMPLOYEES ─────────────────────────────────────────────────
-        elseif ($page === 'employees' && $is_admin): ?>
+        elseif ($page === 'employees' && $is_admin):
+          // If a delete attempt was just blocked because the employee has an active log-in session,
+          // show the warning banner once with that employee's ID, then clear the flag so it doesn't reappear on refresh.
+          $blockedEmpId = isset($_SESSION['emp_delete_blocked_id']) ? $_SESSION['emp_delete_blocked_id'] : '';
+          unset($_SESSION['emp_delete_blocked_id']);
+        ?>
           <div class="page">
             <div class="page-header">
               <div>
@@ -7850,6 +7863,11 @@ function factorial(int $n): int
             </div>
             <?php if (isset($_GET['registered'])): ?>
               <div class="alert alert-success" style="margin:0 0 16px;">Account created successfully.</div>
+            <?php endif; ?>
+            <?php if ($blockedEmpId !== ''): ?>
+              <div class="alert alert-danger" style="margin:0 0 16px;">
+                <strong><?= htmlspecialchars($blockedEmpId, ENT_QUOTES, 'UTF-8') ?></strong> cannot be deleted due to its active session history.
+              </div>
             <?php endif; ?>
             <?php foreach ($employees as $emp):
               $av = makeInitials($emp['full_name']);
@@ -7880,17 +7898,20 @@ function factorial(int $n): int
                   <button onclick="openEmployeeHistory('<?= htmlspecialchars($emp['employee_id'], ENT_QUOTES, 'UTF-8') ?>')" class="btn btn-sm btn-secondary">History</button>
                   <button onclick="document.getElementById('reset_emp_id').value='<?= $emp['employee_id'] ?>'; document.getElementById('resetPassModal').classList.add('open');" class="btn btn-sm btn-secondary">Passcode</button>
                   <?php if ($emp['employee_id'] !== $_SESSION['user_id']): ?>
-                    <form data-confirm="Remove this employee?" method="POST" action="?page=employees" style="margin:0;">
-                      <input type="hidden" name="employee_id" value="<?= $emp['employee_id'] ?>">
-                      <button type="submit" name="delete_employee" class="btn btn-sm btn-danger">Remove</button>
-                    </form>
+                    <?php if ($emp['role'] === 'Cashier'): ?>
+                      <button type="button" class="btn btn-sm btn-danger" onclick="openDeleteEmpConfirm('<?= htmlspecialchars($emp['employee_id'], ENT_QUOTES, 'UTF-8') ?>')">Remove</button>
+                    <?php else: ?>
+                      <form data-confirm="Remove this employee?" method="POST" action="?page=employees" style="margin:0;">
+                        <input type="hidden" name="employee_id" value="<?= $emp['employee_id'] ?>">
+                        <button type="submit" name="delete_employee" class="btn btn-sm btn-danger">Remove</button>
+                      </form>
+                    <?php endif; ?>
                   <?php endif; ?>
                 </div>
               </div>
             <?php endforeach; ?>
 
-          </div>
-
+          </div>>
 
           <div class="overlay" id="editEmpModal">
             <div class="modal-box" style="max-width:380px;">
@@ -7932,6 +7953,29 @@ function factorial(int $n): int
             </div>
           </div>
 
+          <!-- Confirm Delete Employee Modal: shown before deleting a cashier who has no active session history -->
+          <div class="overlay" id="deleteEmpConfirmModal">
+            <div class="modal-box" style="max-width:420px; width:100%;">
+              <div class="modal-header">
+                <span class="modal-title">Confirm Delete</span>
+                <button class="modal-close" type="button" onclick="document.getElementById('deleteEmpConfirmModal').classList.remove('open')">&times;</button>
+              </div>
+              <div class="modal-body" style="padding:0 24px 18px;">
+                <p style="margin:0; color:var(--text-2);">Are you sure you want to delete this employee?</p>
+              </div>
+              <div class="dialog-actions" style="padding:0 24px 24px;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('deleteEmpConfirmModal').classList.remove('open')">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="confirmDeleteEmp()">Confirm</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hidden form actually submitted once deletion is confirmed in the modal above -->
+          <form method="POST" action="?page=employees" id="deleteEmpForm" style="display:none;">
+            <input type="hidden" name="employee_id" id="delete_emp_id_input">
+            <input type="hidden" name="delete_employee" value="1">
+          </form>
+
           <!-- Script for handling Edit Employee modal population and Reset Passcode generation -->
           <script>
             function openEditEmp(e) {
@@ -7939,6 +7983,21 @@ function factorial(int $n): int
               document.getElementById('edit_emp_name').value = e.full_name;
               document.getElementById('edit_emp_role').value = e.role;
               document.getElementById('editEmpModal').classList.add('open');
+            }
+
+            // Open the delete confirmation modal for the given employee, remembering which one to delete
+            let pendingDeleteEmpId = null;
+
+            function openDeleteEmpConfirm(id) {
+              pendingDeleteEmpId = id;
+              document.getElementById('deleteEmpConfirmModal').classList.add('open');
+            }
+
+            // Called when the Confirm button in the delete modal is clicked: fills the hidden form and submits it
+            function confirmDeleteEmp() {
+              if (!pendingDeleteEmpId) return;
+              document.getElementById('delete_emp_id_input').value = pendingDeleteEmpId;
+              document.getElementById('deleteEmpForm').submit();
             }
             document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
               if (e.target === o) o.classList.remove('open');
