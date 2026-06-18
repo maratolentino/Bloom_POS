@@ -44,6 +44,18 @@ function formatDuration(int $seconds): string
     return sprintf('%02d:%02d:%02d', $hours, $minutes, $secs);
 }
 
+function durationToSeconds(?string $duration): int
+{
+    if (empty($duration)) {
+        return 0;
+    }
+    $parts = explode(':', $duration);
+    if (count($parts) !== 3) {
+        return 0;
+    }
+    return ((int)$parts[0] * 3600) + ((int)$parts[1] * 60) + (int)$parts[2];
+}
+
 // Create the session_history table if it doesn't exist. This table stores login/logout records for employees.
 function createSessionHistoryTableSql(): string
 {
@@ -189,17 +201,16 @@ function recordLogout(mysqli $conn, string $employeeId, ?int $historyId = null):
 
     if ($historyId !== null) {
         $stmt = $conn->prepare(
-            'SELECT session_id, login_time FROM session_history WHERE session_id = ? AND employee_id = ? AND logout_time IS NULL LIMIT 1'
+            'SELECT session_id, login_time, duration FROM session_history WHERE session_id = ? AND employee_id = ? AND logout_time IS NULL LIMIT 1'
         );
         $stmt->bind_param('is', $historyId, $employeeId);
     } else {
         $stmt = $conn->prepare(
-            'SELECT session_id, login_time FROM session_history WHERE employee_id = ? AND logout_time IS NULL ORDER BY login_time DESC LIMIT 1'
+            'SELECT session_id, login_time, duration FROM session_history WHERE employee_id = ? AND logout_time IS NULL ORDER BY login_time DESC LIMIT 1'
         );
         $stmt->bind_param('s', $employeeId);
     }
 
-    // Execute the query to find the active session for the employee. If no active session is found, return false.
     $stmt->execute();
     $result = $stmt->get_result();
     $sessionRow = $result->fetch_assoc();
@@ -212,7 +223,13 @@ function recordLogout(mysqli $conn, string $employeeId, ?int $historyId = null):
     $logoutTime = date('Y-m-d H:i:s');
     $loginTimestamp = strtotime($sessionRow['login_time']);
     $segmentSeconds = max(0, strtotime($logoutTime) - $loginTimestamp);
-    $duration = formatDuration($segmentSeconds);
+
+    // Preserve any duration already accumulated earlier today and add this
+    // segment's time on top of it, instead of overwriting it.
+    $priorDurationSeconds = durationToSeconds($sessionRow['duration'] ?? null);
+
+    $totalSeconds = $priorDurationSeconds + $segmentSeconds;
+    $duration = formatDuration($totalSeconds);
 
     $stmt = $conn->prepare(
         'UPDATE session_history SET logout_time = ?, duration = ? WHERE session_id = ?'

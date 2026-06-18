@@ -6377,67 +6377,87 @@ function factorial(int $n): int
       </div>
 
       <script>
-  (function() {
-    var confirmDialogModal    = document.getElementById('confirmDialogModal');
-    var confirmDialogTitle    = document.getElementById('confirmDialogTitle');
-    var confirmDialogMessage  = document.getElementById('confirmDialogMessage');
-    var confirmDialogInput    = document.getElementById('confirmDialogInput');
-    var confirmDialogConfirm  = document.getElementById('confirmDialogConfirm');
-    var confirmDialogCancel   = document.getElementById('confirmDialogCancel');
-    var confirmDialogResolver = null;
+        (function() {
+          var confirmDialogModal = document.getElementById('confirmDialogModal');
+          var confirmDialogTitle = document.getElementById('confirmDialogTitle');
+          var confirmDialogMessage = document.getElementById('confirmDialogMessage');
+          var confirmDialogInput = document.getElementById('confirmDialogInput');
+          var confirmDialogConfirm = document.getElementById('confirmDialogConfirm');
+          var confirmDialogCancel = document.getElementById('confirmDialogCancel');
+          var confirmDialogResolver = null;
 
-    function openDialog(options) {
-      confirmDialogTitle.textContent   = options.title       || 'Confirm action';
-      confirmDialogMessage.textContent = options.message     || '';
-      confirmDialogConfirm.textContent = options.confirmText || 'OK';
-      confirmDialogCancel.textContent  = options.cancelText  || 'Cancel';
-      if (options.prompt) {
-        confirmDialogInput.style.display = 'block';
-        confirmDialogInput.value         = options.defaultValue || '';
-        confirmDialogInput.placeholder   = options.placeholder  || '';
-        setTimeout(function() { confirmDialogInput.focus(); }, 50);
-      } else {
-        confirmDialogInput.style.display = 'none';
-      }
-      confirmDialogModal.classList.add('open');
-      return new Promise(function(resolve) {
-        confirmDialogResolver = resolve;
-      });
-    }
+          function openDialog(options) {
+            confirmDialogTitle.textContent = options.title || 'Confirm action';
+            confirmDialogMessage.textContent = options.message || '';
+            confirmDialogConfirm.textContent = options.confirmText || 'OK';
+            confirmDialogCancel.textContent = options.cancelText || 'Cancel';
+            if (options.prompt) {
+              confirmDialogInput.style.display = 'block';
+              confirmDialogInput.value = options.defaultValue || '';
+              confirmDialogInput.placeholder = options.placeholder || '';
+              setTimeout(function() {
+                confirmDialogInput.focus();
+              }, 50);
+            } else {
+              confirmDialogInput.style.display = 'none';
+            }
+            confirmDialogModal.classList.add('open');
+            return new Promise(function(resolve) {
+              confirmDialogResolver = resolve;
+            });
+          }
 
-    window.closeDialogModal = function() {
-      confirmDialogModal.classList.remove('open');
-      if (confirmDialogResolver) { confirmDialogResolver(null); confirmDialogResolver = null; }
-    };
+          window.closeDialogModal = function() {
+            confirmDialogModal.classList.remove('open');
+            if (confirmDialogResolver) {
+              confirmDialogResolver(null);
+              confirmDialogResolver = null;
+            }
+          };
 
-    window.showConfirm = function(message, title, confirmText, cancelText) {
-      return openDialog({ title: title || 'Confirm action', message: message, confirmText: confirmText || 'OK', cancelText: cancelText || 'Cancel', prompt: false });
-    };
+          window.showConfirm = function(message, title, confirmText, cancelText) {
+            return openDialog({
+              title: title || 'Confirm action',
+              message: message,
+              confirmText: confirmText || 'OK',
+              cancelText: cancelText || 'Cancel',
+              prompt: false
+            });
+          };
 
-    window.showPrompt = function(message, placeholder, title, confirmText, cancelText) {
-      return openDialog({ title: title || 'Enter details', message: message, prompt: true, placeholder: placeholder || '', confirmText: confirmText || 'OK', cancelText: cancelText || 'Cancel' });
-    };
+          window.showPrompt = function(message, placeholder, title, confirmText, cancelText) {
+            return openDialog({
+              title: title || 'Enter details',
+              message: message,
+              prompt: true,
+              placeholder: placeholder || '',
+              confirmText: confirmText || 'OK',
+              cancelText: cancelText || 'Cancel'
+            });
+          };
 
-    confirmDialogConfirm.addEventListener('click', function() {
-      if (!confirmDialogResolver) return;
-      var value = confirmDialogInput.style.display !== 'none' ? confirmDialogInput.value : true;
-      confirmDialogModal.classList.remove('open');
-      confirmDialogResolver(value);
-      confirmDialogResolver = null;
-    });
+          confirmDialogConfirm.addEventListener('click', function() {
+            if (!confirmDialogResolver) return;
+            var value = confirmDialogInput.style.display !== 'none' ? confirmDialogInput.value : true;
+            confirmDialogModal.classList.remove('open');
+            confirmDialogResolver(value);
+            confirmDialogResolver = null;
+          });
 
-    confirmDialogCancel.addEventListener('click', function() {
-      if (!confirmDialogResolver) return;
-      confirmDialogModal.classList.remove('open');
-      confirmDialogResolver(null);
-      confirmDialogResolver = null;
-    });
+          confirmDialogCancel.addEventListener('click', function() {
+            if (!confirmDialogResolver) return;
+            confirmDialogModal.classList.remove('open');
+            confirmDialogResolver(null);
+            confirmDialogResolver = null;
+          });
 
-    confirmDialogModal.addEventListener('click', function(event) {
-      if (event.target === confirmDialogModal) { window.closeDialogModal(); }
-    });
-  })();
-</script>
+          confirmDialogModal.addEventListener('click', function(event) {
+            if (event.target === confirmDialogModal) {
+              window.closeDialogModal();
+            }
+          });
+        })();
+      </script>
 
       <nav class="sidebar">
         <div class="sb-brand">
@@ -6617,7 +6637,7 @@ function factorial(int $n): int
                           <td><?= htmlspecialchars($loginDate, ENT_QUOTES, 'UTF-8') ?></td>
                           <td><?= htmlspecialchars($loginTime, ENT_QUOTES, 'UTF-8') ?></td>
                           <td><?= $logoutTime ?></td>
-                          <td class="session-duration-cell" data-active="<?= $isActive ? '1' : '0' ?>" data-login="<?= htmlspecialchars($sessionRow['login_time'], ENT_QUOTES, 'UTF-8') ?>" data-login-ts="<?= intval(strtotime($sessionRow['login_time'])) ?>" data-prior-duration="<?= isset($sessionRow['duration']) ? (int)$sessionRow['duration'] : 0 ?>">
+                          <td class="session-duration-cell" data-active="<?= $isActive ? '1' : '0' ?>" data-login="<?= htmlspecialchars($sessionRow['login_time'], ENT_QUOTES, 'UTF-8') ?>" data-login-ts="<?= intval(strtotime($sessionRow['login_time'])) ?>" data-prior-duration="<?= durationToSeconds($sessionRow['duration'] ?? null) ?>">
                             <?php if ($isActive): ?>
                               <span class="live-session-timer"><?= $durationText ?></span>
                             <?php else: ?>
@@ -7725,10 +7745,10 @@ function factorial(int $n): int
                             <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
                               <?php if ($is_admin): ?>
                                 <form class="ajax-delete-customer" method="POST" action="?page=crm" style="margin: 0;">
-  <input type="hidden" name="customer_id" value="<?= $c['customer_id'] ?>">
-  <input type="hidden" name="delete_customer" value="1">
-  <button type="button" class="btn btn-sm btn-danger" onclick="event.stopPropagation(); handleCustomerDeleteClick(event);">Delete</button>
-</form>
+                                  <input type="hidden" name="customer_id" value="<?= $c['customer_id'] ?>">
+                                  <input type="hidden" name="delete_customer" value="1">
+                                  <button type="button" class="btn btn-sm btn-danger" onclick="event.stopPropagation(); handleCustomerDeleteClick(event);">Delete</button>
+                                </form>
                               <?php endif; ?>
                               <button type="button" data-history-customer-id="<?= $c['customer_id'] ?>" class="btn btn-sm btn-secondary cust-history-btn">History</button>
                             </div>
@@ -8184,7 +8204,7 @@ function factorial(int $n): int
                     durationCell = `<td class="session-duration-cell" data-active="0">${durationText}</td>`;
                   } else {
                     const loginTs = r.login_time ? Math.floor(new Date(r.login_time.replace(' ', 'T')).getTime() / 1000) : 0;
-                    const priorDuration = 0;
+                    const priorDuration = parseDurationToSeconds(r.duration);
                     logoutCell = '<span style="color:var(--green); font-weight:600;">Active</span>';
                     durationCell = `<td class="session-duration-cell" data-active="1" data-login-ts="${loginTs}" data-prior-duration="${priorDuration}"><span class="live-session-timer">${durationText}</span></td>`;
                   }
@@ -8236,6 +8256,16 @@ function factorial(int $n): int
 
             function escapeHtml(s) {
               return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
+            function parseDurationToSeconds(duration) {
+              if (!duration) return 0;
+              const parts = String(duration).split(':');
+              if (parts.length !== 3) return 0;
+              const h = parseInt(parts[0], 10) || 0;
+              const m = parseInt(parts[1], 10) || 0;
+              const s = parseInt(parts[2], 10) || 0;
+              return (h * 3600) + (m * 60) + s;
             }
 
             function formatShortTime(ts) {
@@ -8550,75 +8580,78 @@ function factorial(int $n): int
   </script>
 
   <!-- AJAX handler for customer deletion -->
-<script>
-  function attachCustomerDeleteListener(btn) {
-    // handled via inline onclick
-  }
-
-  function handleCustomerDeleteClick(e) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const btn = e.target.closest('button') || e.target;
-    const form = btn.closest('form.ajax-delete-customer');
-    if (!form) return;
-
-    if (typeof window.showConfirm === 'function') {
-      window.showConfirm('Are you sure you want to delete this customer?', 'Confirm Delete', 'Confirm', 'Cancel').then(ok => {
-        if (ok) performCustomerDelete(form);
-      });
-    } else {
-      if (confirm('Are you sure you want to delete this customer?')) {
-        performCustomerDelete(form);
-      }
+  <script>
+    function attachCustomerDeleteListener(btn) {
+      // handled via inline onclick
     }
-  }
 
-  function performCustomerDelete(form) {
-    const body = new URLSearchParams(new FormData(form));
-    fetch(form.action || window.location.pathname + '?page=crm', {
-      method: form.method || 'POST',
-      headers: {
-        'X-Requested-With': 'XMLHttpRequest',
-        'Accept': 'application/json'
-      },
-      body: body
-    })
-    .then(res => res.json())
-    .then(json => {
-      if (!json || !json.status) return;
-      if (json.status === 'ok') {
-        const row = form.closest('tr');
-        if (row) {
-          row.style.opacity = '0';
-          row.style.transition = 'opacity 0.3s ease';
-          setTimeout(() => row.remove(), 300);
+    function handleCustomerDeleteClick(e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const btn = e.target.closest('button') || e.target;
+      const form = btn.closest('form.ajax-delete-customer');
+      if (!form) return;
+
+      if (typeof window.showConfirm === 'function') {
+        window.showConfirm('Are you sure you want to delete this customer?', 'Confirm Delete', 'Confirm', 'Cancel').then(ok => {
+          if (ok) performCustomerDelete(form);
+        });
+      } else {
+        if (confirm('Are you sure you want to delete this customer?')) {
+          performCustomerDelete(form);
         }
       }
-    })
-    .catch(() => {});
-  }
+    }
 
-  document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('button[name="delete_customer"]').forEach(btn => {
-      attachCustomerDeleteListener(btn);
-    });
-
-    const customerDeleteObserver = new MutationObserver(mutations => {
-      mutations.forEach(mutation => {
-        mutation.addedNodes.forEach(node => {
-          if (node.nodeType === 1) {
-            const btn = node.querySelector ? node.querySelector('button[name="delete_customer"]') : null;
-            if (btn) attachCustomerDeleteListener(btn);
-            if (node.name === 'delete_customer') attachCustomerDeleteListener(node);
+    function performCustomerDelete(form) {
+      const body = new URLSearchParams(new FormData(form));
+      fetch(form.action || window.location.pathname + '?page=crm', {
+          method: form.method || 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+          },
+          body: body
+        })
+        .then(res => res.json())
+        .then(json => {
+          if (!json || !json.status) return;
+          if (json.status === 'ok') {
+            const row = form.closest('tr');
+            if (row) {
+              row.style.opacity = '0';
+              row.style.transition = 'opacity 0.3s ease';
+              setTimeout(() => row.remove(), 300);
+            }
           }
+        })
+        .catch(() => {});
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('button[name="delete_customer"]').forEach(btn => {
+        attachCustomerDeleteListener(btn);
+      });
+
+      const customerDeleteObserver = new MutationObserver(mutations => {
+        mutations.forEach(mutation => {
+          mutation.addedNodes.forEach(node => {
+            if (node.nodeType === 1) {
+              const btn = node.querySelector ? node.querySelector('button[name="delete_customer"]') : null;
+              if (btn) attachCustomerDeleteListener(btn);
+              if (node.name === 'delete_customer') attachCustomerDeleteListener(node);
+            }
+          });
         });
       });
-    });
 
-    customerDeleteObserver.observe(document.body, { childList: true, subtree: true });
-  });
-</script>
+      customerDeleteObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    });
+  </script>
 
 </body>
 
