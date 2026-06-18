@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS session_history (
     employee_id VARCHAR(50) NOT NULL,
     login_date DATE NOT NULL,
     login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    segment_start DATETIME NULL DEFAULT NULL,
     logout_time DATETIME NULL DEFAULT NULL,
     duration VARCHAR(16) NULL DEFAULT NULL,
     INDEX idx_employee_active (employee_id, logout_time),
@@ -78,6 +79,15 @@ SQL;
 function ensureSessionHistoryTable(mysqli $conn): void
 {
     $conn->query(createSessionHistoryTableSql());
+    // Backfill: add segment_start to tables created before this column existed.
+    // Use a manual existence check instead of "ADD COLUMN IF NOT EXISTS" since
+    // that syntax isn't supported on older MySQL/MariaDB versions (e.g. some XAMPP bundles).
+    $columnCheck = $conn->query("SHOW COLUMNS FROM session_history LIKE 'segment_start'");
+    if ($columnCheck && $columnCheck->num_rows === 0) {
+        $conn->query("ALTER TABLE session_history ADD COLUMN segment_start DATETIME NULL DEFAULT NULL AFTER login_time");
+        // Backfill existing open/closed rows so segment_start defaults sensibly to login_time.
+        $conn->query("UPDATE session_history SET segment_start = login_time WHERE segment_start IS NULL");
+    }
 }
 
 // Get today's session for an employee, if it exists. 
@@ -88,7 +98,7 @@ function getTodaySession(mysqli $conn, string $employeeId): ?array
     $today = date('Y-m-d');
 
     $stmt = $conn->prepare(
-        'SELECT session_id, login_time, logout_time, duration FROM session_history WHERE employee_id = ? AND login_date = ? ORDER BY session_id DESC LIMIT 1'
+        'SELECT session_id, login_time, segment_start, logout_time, duration FROM session_history WHERE employee_id = ? AND login_date = ? ORDER BY session_id DESC LIMIT 1'
     );
     $stmt->bind_param('ss', $employeeId, $today);
     $stmt->execute();
@@ -110,7 +120,7 @@ function closeDanglingSessions(mysqli $conn, string $employeeId): void
 
     $today = date('Y-m-d');
     $stmt = $conn->prepare(
-        'SELECT session_id, login_time, login_date FROM session_history WHERE employee_id = ? AND logout_time IS NULL AND login_date < ? ORDER BY login_time ASC'
+        'SELECT session_id, login_time, segment_start, login_date, duration FROM session_history WHERE employee_id = ? AND logout_time IS NULL AND login_date < ? ORDER BY login_time ASC'
     );
     $stmt->bind_param('ss', $employeeId, $today);
     $stmt->execute();
@@ -127,14 +137,16 @@ function closeDanglingSessions(mysqli $conn, string $employeeId): void
     );
 
     foreach ($openRows as $row) {
-        $loginTimestamp = strtotime($row['login_time']);
+        $segmentStartValue = $row['segment_start'] ?? null;
+        $segmentStartTimestamp = $segmentStartValue ? strtotime($segmentStartValue) : strtotime($row['login_time']);
         $dayEndTimestamp = strtotime($row['login_date'] . ' 23:59:59');
-        $fallbackLogoutTimestamp = min($loginTimestamp + 8 * 3600, $dayEndTimestamp);
-        $fallbackLogoutTimestamp = max($fallbackLogoutTimestamp, $loginTimestamp);
+        $fallbackLogoutTimestamp = min($segmentStartTimestamp + 8 * 3600, $dayEndTimestamp);
+        $fallbackLogoutTimestamp = max($fallbackLogoutTimestamp, $segmentStartTimestamp);
 
         $logoutTime = date('Y-m-d H:i:s', $fallbackLogoutTimestamp);
-        $durationSeconds = $fallbackLogoutTimestamp - $loginTimestamp;
-        $duration = formatDuration($durationSeconds);
+        $segmentSeconds = $fallbackLogoutTimestamp - $segmentStartTimestamp;
+        $priorDurationSeconds = durationToSeconds($row['duration'] ?? null);
+        $duration = formatDuration($priorDurationSeconds + $segmentSeconds);
 
         $updateStmt->bind_param('ssi', $logoutTime, $duration, $row['session_id']);
         $updateStmt->execute();
@@ -165,9 +177,11 @@ function recordLogin(mysqli $conn, string $employeeId): ?int
             return (int)$todaySession['session_id'];
         }
 
-        // Same-day re-login: update the existing row with a new login time and clear the logout time.
+        // Same-day re-login: keep the original login_time (first login of the day)
+        // intact, and only update segment_start (used to measure this new segment's
+        // duration) and clear logout_time to mark the row active again.
         $stmt = $conn->prepare(
-            'UPDATE session_history SET login_time = ?, logout_time = NULL WHERE session_id = ?'
+            'UPDATE session_history SET segment_start = ?, logout_time = NULL WHERE session_id = ?'
         );
         $stmt->bind_param('si', $loginTime, $todaySession['session_id']);
         $stmt->execute();
@@ -177,11 +191,12 @@ function recordLogin(mysqli $conn, string $employeeId): ?int
         return (int)$todaySession['session_id'];
     }
 
-    // No session today yet: create a new row.
+    // No session today yet: create a new row. segment_start matches login_time
+    // since this is also the start of the first segment.
     $stmt = $conn->prepare(
-        'INSERT INTO session_history (employee_id, login_date, login_time, duration) VALUES (?, ?, ?, "00:00:00")'
+        'INSERT INTO session_history (employee_id, login_date, login_time, segment_start, duration) VALUES (?, ?, ?, ?, "00:00:00")'
     );
-    $stmt->bind_param('sss', $employeeId, $loginDate, $loginTime);
+    $stmt->bind_param('ssss', $employeeId, $loginDate, $loginTime, $loginTime);
     $stmt->execute();
     $sessionId = $stmt->insert_id;
     $stmt->close();
@@ -201,12 +216,12 @@ function recordLogout(mysqli $conn, string $employeeId, ?int $historyId = null):
 
     if ($historyId !== null) {
         $stmt = $conn->prepare(
-            'SELECT session_id, login_time, duration FROM session_history WHERE session_id = ? AND employee_id = ? AND logout_time IS NULL LIMIT 1'
+            'SELECT session_id, login_time, segment_start, duration FROM session_history WHERE session_id = ? AND employee_id = ? AND logout_time IS NULL LIMIT 1'
         );
         $stmt->bind_param('is', $historyId, $employeeId);
     } else {
         $stmt = $conn->prepare(
-            'SELECT session_id, login_time, duration FROM session_history WHERE employee_id = ? AND logout_time IS NULL ORDER BY login_time DESC LIMIT 1'
+            'SELECT session_id, login_time, segment_start, duration FROM session_history WHERE employee_id = ? AND logout_time IS NULL ORDER BY login_time DESC LIMIT 1'
         );
         $stmt->bind_param('s', $employeeId);
     }
@@ -221,8 +236,12 @@ function recordLogout(mysqli $conn, string $employeeId, ?int $historyId = null):
     }
 
     $logoutTime = date('Y-m-d H:i:s');
-    $loginTimestamp = strtotime($sessionRow['login_time']);
-    $segmentSeconds = max(0, strtotime($logoutTime) - $loginTimestamp);
+    // Use segment_start (the time of the most recent login/re-login) to measure
+    // this segment's duration. Fall back to login_time for older rows created
+    // before segment_start existed.
+    $segmentStartValue = $sessionRow['segment_start'] ?? null;
+    $segmentStartTimestamp = $segmentStartValue ? strtotime($segmentStartValue) : strtotime($sessionRow['login_time']);
+    $segmentSeconds = max(0, strtotime($logoutTime) - $segmentStartTimestamp);
 
     // Preserve any duration already accumulated earlier today and add this
     // segment's time on top of it, instead of overwriting it.
@@ -252,7 +271,7 @@ function getSessionHistory(mysqli $conn, string $employeeId, int $limit = 20): a
     }
 
     $stmt = $conn->prepare(
-        'SELECT session_id, login_date, login_time, logout_time, duration
+        'SELECT session_id, login_date, login_time, segment_start, logout_time, duration
         FROM session_history
         WHERE employee_id = ?
         ORDER BY login_time DESC
@@ -277,7 +296,7 @@ function getActiveSessionHistory(mysqli $conn, string $employeeId): ?array
     }
 
     $stmt = $conn->prepare(
-        'SELECT session_id, login_time, logout_time, duration
+        'SELECT session_id, login_time, segment_start, logout_time, duration
         FROM session_history
         WHERE employee_id = ? AND logout_time IS NULL
         ORDER BY login_time DESC
@@ -352,7 +371,7 @@ if (php_sapi_name() !== 'cli' && isset($_REQUEST['action']) && basename($_SERVER
             $stmt->close();
 
             // fetch session rows
-            $stmt = $conn->prepare('SELECT login_date, login_time, logout_time, duration FROM session_history WHERE employee_id = ? ORDER BY login_time DESC LIMIT 500');
+            $stmt = $conn->prepare('SELECT login_date, login_time, segment_start, logout_time, duration FROM session_history WHERE employee_id = ? ORDER BY login_time DESC LIMIT 500');
             $stmt->bind_param('s', $employeeId);
             $stmt->execute();
             $result = $stmt->get_result();

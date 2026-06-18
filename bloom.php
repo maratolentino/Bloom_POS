@@ -6632,12 +6632,16 @@ function factorial(int $n): int
                         $isActive = $sessionRow['logout_time'] === null;
                         $logoutTime = $isActive ? '<span class="text-success" style="font-weight:600;">Active</span>' : date('g:i A', strtotime($sessionRow['logout_time']));
                         $durationText = htmlspecialchars($sessionRow['duration'] ?: '00:00:00', ENT_QUOTES, 'UTF-8');
+                        // segment_start tracks the most recent login/re-login, used for the
+                        // live timer. Fall back to login_time for rows predating this column.
+                        $segmentStartValue = $sessionRow['segment_start'] ?? null;
+                        $segmentStartTs = $segmentStartValue ? strtotime($segmentStartValue) : strtotime($sessionRow['login_time']);
                         ?>
                         <tr class="<?= $isActive ? 'active-session-row' : '' ?>">
                           <td><?= htmlspecialchars($loginDate, ENT_QUOTES, 'UTF-8') ?></td>
                           <td><?= htmlspecialchars($loginTime, ENT_QUOTES, 'UTF-8') ?></td>
                           <td><?= $logoutTime ?></td>
-                          <td class="session-duration-cell" data-active="<?= $isActive ? '1' : '0' ?>" data-login="<?= htmlspecialchars($sessionRow['login_time'], ENT_QUOTES, 'UTF-8') ?>" data-login-ts="<?= intval(strtotime($sessionRow['login_time'])) ?>" data-prior-duration="<?= durationToSeconds($sessionRow['duration'] ?? null) ?>">
+                          <td class="session-duration-cell" data-active="<?= $isActive ? '1' : '0' ?>" data-login-ts="<?= intval($segmentStartTs) ?>" data-prior-duration="<?= durationToSeconds($sessionRow['duration'] ?? null) ?>">
                             <?php if ($isActive): ?>
                               <span class="live-session-timer"><?= $durationText ?></span>
                             <?php else: ?>
@@ -8203,7 +8207,10 @@ function factorial(int $n): int
                     logoutCell = escapeHtml(formatShortTime(r.logout_time));
                     durationCell = `<td class="session-duration-cell" data-active="0">${durationText}</td>`;
                   } else {
-                    const loginTs = r.login_time ? Math.floor(new Date(r.login_time.replace(' ', 'T')).getTime() / 1000) : 0;
+                    // segment_start tracks the most recent login/re-login, used for the
+                    // live timer. Fall back to login_time for rows predating this column.
+                    const segStartRaw = r.segment_start || r.login_time;
+                    const loginTs = segStartRaw ? Math.floor(new Date(segStartRaw.replace(' ', 'T')).getTime() / 1000) : 0;
                     const priorDuration = parseDurationToSeconds(r.duration);
                     logoutCell = '<span style="color:var(--green); font-weight:600;">Active</span>';
                     durationCell = `<td class="session-duration-cell" data-active="1" data-login-ts="${loginTs}" data-prior-duration="${priorDuration}"><span class="live-session-timer">${durationText}</span></td>`;
